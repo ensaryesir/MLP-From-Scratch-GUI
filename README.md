@@ -169,7 +169,7 @@ L2 Regularization: L_reg = (λ/2m) * Σ||W||²
 
 ## 📸 Ekran Görüntüleri
 
-*Uygulamayı çalıştırarak interaktif deneyimi kendiniz yaşayın!*
+![alt text](image.png)
 
 ### Özellikler:
 - ✅ Modern dark mode arayüz
@@ -209,14 +209,8 @@ Bu proje MIT lisansı altında lisanslanmıştır. Detaylar için `LICENSE` dosy
 
 ## 👨‍💻 Geliştirici
 
-**Ensar Yeşir**
+**Ensar Yesir**
 - GitHub: [@ensaryesir](https://github.com/ensaryesir)
-
-## 🙏 Teşekkürler
-
-Bu proje, makine öğrenmesi ve sinir ağları derslerinde öğrenilen teorik bilgilerin pratik uygulamasıdır.
-
----
 
 ⭐ Projeyi beğendiyseniz yıldız vermeyi unutmayın!
 
