@@ -111,18 +111,39 @@ class ControlPanel(ctk.CTkFrame):
         self.architecture_entry.pack(side="right", padx=5)
         self.architecture_entry.insert(0, "2,5,3")
         
-        # Aktivasyon Fonksiyonu
-        self.activation_frame = ctk.CTkFrame(hyper_frame)
-        self.activation_frame.pack(fill="x", padx=10, pady=2)
+        # Aktivasyon Fonksiyonu - Gizli Katmanlar
+        self.activation_hidden_frame = ctk.CTkFrame(hyper_frame)
+        self.activation_hidden_frame.pack(fill="x", padx=10, pady=2)
         
-        activ_label = ctk.CTkLabel(self.activation_frame, text="Aktivasyon:")
-        activ_label.pack(side="left", padx=5)
+        activ_hidden_label = ctk.CTkLabel(self.activation_hidden_frame, 
+                                          text="Gizli Katman Aktiv:")
+        activ_hidden_label.pack(side="left", padx=5)
         
-        self.activation_var = ctk.StringVar(value="relu,softmax")
-        self.activation_entry = ctk.CTkEntry(self.activation_frame, width=150,
-                                            textvariable=self.activation_var,
-                                            placeholder_text="örn: relu,softmax")
-        self.activation_entry.pack(side="right", padx=5)
+        self.activation_hidden_var = ctk.StringVar(value="relu")
+        self.activation_hidden_menu = ctk.CTkOptionMenu(
+            self.activation_hidden_frame,
+            values=["relu", "tanh", "sigmoid", "linear"],
+            variable=self.activation_hidden_var,
+            width=150
+        )
+        self.activation_hidden_menu.pack(side="right", padx=5)
+        
+        # Aktivasyon Fonksiyonu - Çıktı Katmanı
+        self.activation_output_frame = ctk.CTkFrame(hyper_frame)
+        self.activation_output_frame.pack(fill="x", padx=10, pady=2)
+        
+        activ_output_label = ctk.CTkLabel(self.activation_output_frame, 
+                                          text="Çıktı Katman Aktiv:")
+        activ_output_label.pack(side="left", padx=5)
+        
+        self.activation_output_var = ctk.StringVar(value="softmax")
+        self.activation_output_menu = ctk.CTkOptionMenu(
+            self.activation_output_frame,
+            values=["softmax", "sigmoid", "linear"],
+            variable=self.activation_output_var,
+            width=150
+        )
+        self.activation_output_menu.pack(side="right", padx=5)
         
         # Öğrenme Oranı
         lr_frame = ctk.CTkFrame(hyper_frame)
@@ -224,10 +245,12 @@ class ControlPanel(ctk.CTkFrame):
         # MLP dışı modeller için bazı parametreleri gizle/göster
         if "Multi-Layer" in choice:
             self.architecture_frame.pack(fill="x", padx=10, pady=2)
-            self.activation_frame.pack(fill="x", padx=10, pady=2)
+            self.activation_hidden_frame.pack(fill="x", padx=10, pady=2)
+            self.activation_output_frame.pack(fill="x", padx=10, pady=2)
         else:
             self.architecture_frame.pack_forget()
-            self.activation_frame.pack_forget()
+            self.activation_hidden_frame.pack_forget()
+            self.activation_output_frame.pack_forget()
     
     def update_class_radios(self, classes, colors):
         """
@@ -284,8 +307,9 @@ class ControlPanel(ctk.CTkFrame):
     def get_activation_functions(self):
         """Aktivasyon fonksiyonlarını liste olarak döndürür."""
         try:
-            activ_str = self.activation_entry.get()
-            return [x.strip() for x in activ_str.split(',')]
+            hidden_activation = self.activation_hidden_var.get()
+            output_activation = self.activation_output_var.get()
+            return [hidden_activation, output_activation]
         except:
             return ['relu', 'softmax']
     
