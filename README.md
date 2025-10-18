@@ -119,17 +119,17 @@ python main.py
 
 ### 📊 Detaylı Veri Akış Tablosu
 ```
-👤 Kullanıcı → 🎛️ Kontrol Paneli → 🧠 main.py → 🤖 Algoritmalar → 🧠 main.py → 📊 Görselleştirme
-     ↓              ↓                ↓           ↓              ↓           ↓
-  Mouse Click    Hyperparams      Orchestrate   Training       Receive     Real-time
-  Add Points     Learning Rate    Create Model   Forward Pass   Results     Error Graph
-  Select Class   Epochs           Start Train    Backward Pass  Coordinate  Decision Boundary
-  Class Mgmt     Architecture     Async Loop     Update Weights Update UI   Test Results
-  Buttons        Activations      Coordinate     Yield Results  Distribute  Live Animation
-  Clear Data     Batch Size       Get Settings   Compute Loss   Send Data   Tab Switching
-  Training       L2 Lambda        Build Model    Fit Data       Control     Status Updates
-  Settings       Test Split       Run Epochs     Generate       Manage      Plot Updates
-```
+👤Kullanıcı → 🎛️ Kontrol Paneli → 🧠 main.py → 🤖 Algoritmalar → 🧠 main.py → 📊 Görselleştirme
+      ↓                 ↓                ↓               ↓              ↓                 ↓
+  Mouse Click      Hyperparams       Orchestrate     Training        Receive         Real-time
+  Add Points       Learning Rate     Create Model    Forward Pass    Results         Error Graph
+  Select Class     Epochs            Start Train     Backward Pass   Coordinate      Decision Boundary
+  Class Mgmt       Architecture      Async Loop      Update Weights  Update UI       Test Results
+  Buttons          Activations       Coordinate      Yield Results   Distribute      Live Animation
+  Clear Data       Batch Size        Get Settings    Compute Loss    Send Data       Tab Switching
+  Training         L2 Lambda         Build Model     Fit Data        Control         Status Updates
+  Settings         Test Split        Run Epochs      Generate        Manage          Plot Updates
+``` 
 
 ### 🔗 Bağlantı Mekanizmaları
 
