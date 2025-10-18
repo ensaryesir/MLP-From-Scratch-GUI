@@ -1,6 +1,25 @@
 """
-Kontrol Paneli
-Kullanıcı ayarları ve model parametreleri için kontrol widget'ları.
+Control Panel - User Interface Module
+Kontrol Paneli - Kullanıcı Arayüzü Modülü
+
+This module implements the right sidebar control panel containing all user
+controls for model selection, hyperparameter configuration, and training actions.
+
+Bu modül, model seçimi, hiperparametre yapılandırması ve eğitim eylemleri
+için tüm kullanıcı kontrollerini içeren sağ kenar çubuğu kontrol panelini uygular.
+
+GUI Components / GUI Bileşenleri:
+    - Class Management: Add/remove classes, select active class
+      Sınıf Yönetimi: Sınıf ekle/çıkar, aktif sınıfı seç
+    - Model Selection: Choose between Perceptron, Delta Rule, MLP
+      Model Seçimi: Perceptron, Delta Rule, MLP arasında seçim
+    - Hyperparameters: Learning rate, epochs, batch size, etc.
+      Hiperparametreler: Öğrenme oranı, epoch'lar, batch boyutu, vb.
+    - Action Buttons: Clear data, start training
+      Eylem Butonları: Veriyi temizle, eğitimi başlat
+
+Author: Developed for educational purposes
+Date: 2024
 """
 
 import customtkinter as ctk
@@ -8,27 +27,85 @@ import customtkinter as ctk
 
 class ControlPanel(ctk.CTkFrame):
     """
-    Sağ taraftaki kontrol paneli:
-    - Sınıf yönetimi
-    - Model seçimi
-    - Hiperparametreler
-    - Kontrol butonları
+    Control Panel - Right Sidebar UI Component
+    Kontrol Paneli - Sağ Kenar Çubuğu UI Bileşeni
+
+    This class implements the control panel on the right side of the application.
+    It provides all user controls and communicates with the main application
+    through callback functions.
+
+    Bu sınıf, uygulamanın sağ tarafındaki kontrol panelini uygular.
+    Tüm kullanıcı kontrollerini sağlar ve callback fonksiyonları aracılığıyla
+    ana uygulamayla iletişim kurar.
+
+    UI Sections / UI Bölümleri:
+        1. Class Management Section
+           Sınıf Yönetim Bölümü:
+           - Add/remove class buttons
+             Sınıf ekle/çıkar butonları
+           - Radio buttons for class selection
+             Sınıf seçimi için radio butonlar
+
+        2. Model Selection Section
+           Model Seçim Bölümü:
+           - Dropdown menu for algorithm choice
+             Algoritma seçimi için açılır menü
+
+        3. Hyperparameters Section
+           Hiperparametreler Bölümü:
+           - Input fields for all training parameters
+             Tüm eğitim parametreleri için giriş alanları
+
+        4. Control Buttons Section
+           Kontrol Butonları Bölümü:
+           - Clear data button
+             Veri temizleme butonu
+           - Start training button
+             Eğitimi başlatma butonu
+           - Status label
+             Durum etiketi
+
+    Callback Pattern / Callback Deseni:
+        Uses callback functions to communicate with main application,
+        implementing loose coupling and separation of concerns.
+
+        Ana uygulamayla iletişim için callback fonksiyonları kullanır,
+        gevşek bağlantı ve endişelerin ayrılmasını uygular.
     """
-    
+
     def __init__(self, master, on_add_class=None, on_remove_class=None,
                  on_clear_data=None, on_start_training=None, **kwargs):
         """
-        ControlPanel'i başlatır.
-        
+        Initialize the Control Panel with all UI components and callbacks.
+        Tüm UI bileşenleri ve callback'lerle Kontrol Panelini başlat.
+
+        Sets up the control panel layout and stores callback functions
+        for communication with the main application.
+
+        Kontrol paneli düzenini kurar ve ana uygulamayla iletişim için
+        callback fonksiyonlarını saklar.
+
         Args:
-            master: Üst widget
-            on_add_class: Sınıf ekleme callback'i
-            on_remove_class: Sınıf silme callback'i
-            on_clear_data: Veri temizleme callback'i
-            on_start_training: Eğitim başlatma callback'i
+            master: Parent widget (main application window)
+                   Üst widget (ana uygulama penceresi)
+
+            on_add_class (callable, optional): Callback when add class button is clicked
+                                              Sınıf ekle butonuna tıklandığında callback
+
+            on_remove_class (callable, optional): Callback when remove class button is clicked
+                                                 Sınıf çıkar butonuna tıklandığında callback
+
+            on_clear_data (callable, optional): Callback when clear data button is clicked
+                                               Veri temizle butonuna tıklandığında callback
+
+            on_start_training (callable, optional): Callback when start training button is clicked
+                                                   Eğitimi başlat butonuna tıklandığında callback
+
+            **kwargs: Additional arguments passed to CTkFrame
+                     CTkFrame'e geçirilen ek argümanlar
         """
         super().__init__(master, **kwargs)
-        
+
         self.on_add_class = on_add_class
         self.on_remove_class = on_remove_class
         self.on_clear_data = on_clear_data
@@ -40,7 +117,18 @@ class ControlPanel(ctk.CTkFrame):
         self._setup_ui()
     
     def _setup_ui(self):
-        """Kullanıcı arayüzünü kurar."""
+        """
+        Setup all UI components in the control panel.
+        Kontrol panelindeki tüm UI bileşenlerini kur.
+        
+        Creates and organizes all widgets in a vertical layout with sections:
+        Tüm widget'ları bölümlerle dikey düzende oluşturur ve düzenler:
+            - Title / Başlık
+            - Class Management / Sınıf Yönetimi
+            - Model Selection / Model Seçimi
+            - Hyperparameters / Hiperparametreler
+            - Control Buttons / Kontrol Butonları
+        """
         # Başlık
         title_label = ctk.CTkLabel(self, text="⚙️ Kontrol Paneli", 
                                    font=ctk.CTkFont(size=20, weight="bold"))
@@ -254,11 +342,18 @@ class ControlPanel(ctk.CTkFrame):
     
     def update_class_radios(self, classes, colors):
         """
-        Sınıf radio button'larını günceller.
+        Update class selection radio buttons dynamically.
+        Sınıf seçim radio butonlarını dinamik olarak güncelle.
+        
+        Recreates radio buttons when classes are added or removed,
+        ensuring UI stays synchronized with data state.
+        
+        Sınıflar eklenip çıkarıldığında radio butonları yeniden oluşturur,
+        UI'nın veri durumuyla senkronize kalmasını sağlar.
         
         Args:
-            classes: Sınıf isimleri listesi
-            colors: Sınıf renkleri listesi
+            classes (list): List of class names / Sınıf adları listesi
+            colors (list): List of hex color codes for each class / Her sınıf için hex renk kodları listesi
         """
         # Eski radio button'ları temizle
         for widget in self.class_radio_frame.winfo_children():
@@ -283,11 +378,23 @@ class ControlPanel(ctk.CTkFrame):
             self.selected_class.set(0)
     
     def get_selected_class(self):
-        """Seçili sınıf ID'sini döndürür."""
+        """
+        Get the currently selected class ID.
+        Şu anda seçili sınıf ID'sini al.
+        
+        Returns:
+            int: Selected class index / Seçili sınıf indeksi
+        """
         return self.selected_class.get()
     
     def get_model_type(self):
-        """Seçili model tipini döndürür."""
+        """
+        Get the selected model type from dropdown.
+        Açılır menüden seçilen model tipini al.
+        
+        Returns:
+            str: 'Perceptron', 'DeltaRule', or 'MLP'
+        """
         model_str = self.model_menu.get()
         if "Perceptron" in model_str:
             return "Perceptron"
@@ -349,11 +456,29 @@ class ControlPanel(ctk.CTkFrame):
             return 0.2
     
     def set_status(self, status_text):
-        """Durum etiketini günceller."""
+        """
+        Update the status label text.
+        Durum etiketi metnini güncelle.
+        
+        Used to display training progress and messages to the user.
+        Eğitim ilerlemesini ve mesajları kullanıcıya göstermek için kullanılır.
+        
+        Args:
+            status_text (str): Text to display / Gösterilecek metin
+        """
         self.status_label.configure(text=status_text)
     
     def enable_training(self, enabled=True):
-        """Eğitim butonunu aktif/pasif yapar."""
+        """
+        Enable or disable the training button.
+        Eğitim butonunu etkinleştir veya devre dışı bırak.
+        
+        Used to prevent multiple concurrent training sessions.
+        Birden fazla eş zamanlı eğitim oturumunu önlemek için kullanılır.
+        
+        Args:
+            enabled (bool): True to enable, False to disable / Etkinleştirmek için True, devre dışı bırakmak için False
+        """
         if enabled:
             self.train_btn.configure(state="normal")
         else:
