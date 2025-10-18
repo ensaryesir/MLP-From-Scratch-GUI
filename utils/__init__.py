@@ -1,6 +1,6 @@
 """
 Utilities Package
-Veri yönetimi ve yardımcı fonksiyonları içerir.
+Data management and helper functions.
 """
 
 from .data_handler import DataHandler

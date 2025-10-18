@@ -4,6 +4,10 @@
 
 Python ve NumPy kullanılarak sıfırdan yazılmış tek katmanlı ve çok katmanlı sinir ağı algoritmalarını görselleştiren modern masaüstü uygulaması.
 
+![alt text](image.png)
+
+**⚠️ Eğitim Amaçlı Proje**: Hiçbir ML kütüphanesi kullanılmadı (scikit-learn, TensorFlow, PyTorch, Keras). Tüm algoritmalar sıfırdan NumPy ile yazılmıştır.
+
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![NumPy](https://img.shields.io/badge/NumPy-1.24+-green.svg)
 ![CustomTkinter](https://img.shields.io/badge/CustomTkinter-5.2+-orange.svg)
@@ -14,10 +18,9 @@ Python ve NumPy kullanılarak sıfırdan yazılmış tek katmanlı ve çok katma
 - [Özellikler](#-özellikler)
 - [Kurulum](#-kurulum)
 - [Kullanım](#-kullanım)
+- [Veri Akış Şeması](#-veri-akış-şeması)
 - [Proje Yapısı](#-proje-yapısı)
 - [Algoritmalar](#-algoritmalar)
-- [Ekran Görüntüleri](#-ekran-görüntüleri)
-- [Teknoloji Stack](#-teknoloji-stack)
 - [Katkıda Bulunma](#-katkıda-bulunma)
 
 ## ✨ Özellikler
@@ -33,9 +36,9 @@ Python ve NumPy kullanılarak sıfırdan yazılmış tek katmanlı ve çok katma
 3. **Multi-Layer Perceptron (MLP)**: Backpropagation ile eğitilen derin sinir ağı
 
 ### 🎨 Canlı Görselleştirme
-- **Eğitim Sekmesi**: Eğitim sırasında karar sınırlarının canlı animasyonu
+- **Training Sekmesi**: Eğitim sırasında karar sınırlarının canlı animasyonu
 - **Test Sekmesi**: Test verisi üzerinde model performansı
-- **Hata Grafiği**: Epoch'lara göre loss değişimi
+- **Error Graph**: Epoch'lara göre error değişimi
 
 ### ⚙️ Esnek Hiperparametre Kontrolü
 - Özelleştirilebilir katman mimarisi
@@ -75,29 +78,78 @@ python main.py
 
 ## 📖 Kullanım
 
-### 1️⃣ Veri Ekleme
-1. Sağ panelde istediğiniz sınıfı seçin
-2. Sol taraftaki **Eğitim (Train)** grafiğine fare ile tıklayarak veri noktaları ekleyin
-3. Gerekirse **+ Class** butonu ile yeni sınıflar ekleyin
+### 🎯 Temel Adımlar
+1. **Veri Ekleme**: Training sekmesinde grafiğe tıklayarak veri noktaları ekleyin
+2. **Model Seçimi**: Perceptron, Delta Rule veya MLP seçin
+3. **Hiperparametre Ayarları**: Learning rate, epochs, architecture ayarlayın
+4. **Eğitim**: START TRAINING butonuna tıklayın
+5. **İzleme**: Error Graph'te loss değişimini, Training'de karar sınırlarını takip edin
+6. **Değerlendirme**: Test sekmesinde model performansını görün
 
-### 2️⃣ Model Seçimi ve Ayarlama
-1. **Model Seçimi**: Perceptron, Delta Rule veya MLP seçin
-2. **Hiperparametreler**: 
-   - MLP için katman mimarisini ayarlayın (örn: `2,5,3`)
-   - Aktivasyon fonksiyonlarını seçin (örn: `relu,softmax`)
-   - Öğrenme oranı, epoch sayısı ve diğer parametreleri ayarlayın
+### 💡 İpuçları
+- **Veri**: Sınıflar arası dengeli nokta sayısı, farklı bölgelere dağıtım
+- **Model**: Basit problemler → Perceptron/Delta Rule, Non-linear → MLP
+- **Eğitim**: Error azalmıyor → Learning rate artır, Error sallanıyor → Learning rate düşür
 
-### 3️⃣ Eğitim
-1. **START TRAINING** butonuna tıklayın
-2. Eğitim sırasında:
-   - Karar sınırlarının nasıl oluştuğunu izleyin
-   - **Hata Grafiği** sekmesinde loss değişimini takip edin
-3. Eğitim tamamlandığında:
-   - **Test** sekmesine geçerek model performansını görün
-   - Test accuracy değerini kontrol edin
+### 🔧 Örnek Senaryolar
 
-### 4️⃣ Veri Temizleme
-- **Clear Data** butonu ile tüm veri noktalarını silebilirsiniz
+#### Senaryo 1: XOR Problemi
+```
+1. İki sınıf oluşturun
+2. Veri: (2,2)→Class0, (8,8)→Class0, (2,8)→Class1, (8,2)→Class1
+3. Model: Multi-Layer (MLP)
+4. Mimari: 2,8,2
+5. Aktivasyon: relu,softmax
+6. Öğrenme Oranı: 0.1
+7. Epochs: 300
+```
+
+#### Senaryo 2: 3 Sınıflı Classification
+```
+1. Üç sınıf oluşturun
+2. Her sınıftan 15-20 nokta ekleyin
+3. Model: Multi-Layer (MLP)
+4. Mimari: 2,10,3
+5. Aktivasyon: tanh,softmax
+6. Öğrenme Oranı: 0.05
+7. Epochs: 200
+```
+
+## 🔄 Veri Akış Şeması
+
+### 📊 Detaylı Veri Akış Tablosu
+```
+👤 Kullanıcı → 🎛️ Kontrol Paneli → 🧠 main.py → 🤖 Algoritmalar → 🧠 main.py → 📊 Görselleştirme
+     ↓              ↓                ↓           ↓              ↓           ↓
+  Mouse Click    Hyperparams      Orchestrate   Training       Receive     Real-time
+  Add Points     Learning Rate    Create Model   Forward Pass   Results     Error Graph
+  Select Class   Epochs           Start Train    Backward Pass  Coordinate  Decision Boundary
+  Class Mgmt     Architecture     Async Loop     Update Weights Update UI   Test Results
+  Buttons        Activations      Coordinate     Yield Results  Distribute  Live Animation
+  Clear Data     Batch Size       Get Settings   Compute Loss   Send Data   Tab Switching
+  Training       L2 Lambda        Build Model    Fit Data       Control     Status Updates
+  Settings       Test Split       Run Epochs     Generate       Manage      Plot Updates
+```
+
+### 🔗 Bağlantı Mekanizmaları
+
+**1. Callback Pattern (Control Panel → Main):**
+- Button click → callback trigger → main.py method çağrısı
+
+**2. Parameter Passing (Main → Algorithm):**
+- Hyperparameter'ları topla → model constructor'a geçir
+
+**3. Generator Pattern (Algorithm → Main):**
+- Her epoch'ta yield → non-blocking execution → UI responsive
+
+**4. Direct Calls (Main → Visualization):**
+- Sonuçları al → görselleştirme method'larını çağır
+
+**Bu mimari sayesinde:**
+- ✅ **Modüler**: Her component bağımsız
+- ✅ **Responsive**: Non-blocking UI  
+- ✅ **Extensible**: Yeni algoritmalar kolayca eklenebilir
+- ✅ **Maintainable**: Clear separation of concerns
 
 ## 📁 Proje Yapısı
 
@@ -121,6 +173,23 @@ MLP-From-Scratch-GUI/
     ├── __init__.py
     └── data_handler.py         # Veri yönetimi
 ```
+
+### 📈 Test Senaryoları
+
+**Senaryo 1: Linear Problem (Başarılı ✓)**
+- 2 sınıf, doğrusal ayrılabilir
+- Perceptron ile hızlı yakınsama
+- Accuracy: ~100%
+
+**Senaryo 2: XOR Problemi (Başarılı ✓)**
+- 2 sınıf, non-linear
+- MLP (2,8,2) ile çözüm
+- Accuracy: ~95-100%
+
+**Senaryo 3: Multi-Class (Başarılı ✓)**
+- 3-6 sınıf
+- MLP ile kompleks karar sınırları
+- Accuracy: Model ve veriye bağlı
 
 ## 🧮 Algoritmalar
 
@@ -167,35 +236,9 @@ Cross-Entropy: L = -(1/m) * Σ Σ y_true * log(y_pred)
 L2 Regularization: L_reg = (λ/2m) * Σ||W||²
 ```
 
-## 📸 Ekran Görüntüleri
-
-![alt text](image.png)
-
-### Özellikler:
-- ✅ Modern dark mode arayüz
-- ✅ Renkli karar sınırları
-- ✅ Real-time animasyonlar
-- ✅ Profesyonel grafikler
-
-## 🛠️ Teknoloji Stack
-
-- **Python 3.8+**: Ana programlama dili
-- **NumPy**: Sayısal hesaplamalar ve matris işlemleri
-- **Matplotlib**: Bilimsel görselleştirme
-- **CustomTkinter**: Modern GUI framework
-
-### ⚠️ Yasaklı Kütüphaneler
-Bu proje **eğitim amaçlı** olduğundan, aşağıdaki kütüphaneler **KESİNLİKLE KULLANILMAMIŞTIR**:
-- ❌ scikit-learn
-- ❌ TensorFlow
-- ❌ PyTorch
-- ❌ Keras
-
-Tüm algoritmalar sıfırdan NumPy ile yazılmıştır.
-
 ## 🤝 Katkıda Bulunma
 
-Katkılarınızı bekliyoruz! Lütfen şu adımları izleyin:
+Katkılarınızı bekliyorum! Lütfen şu adımları izleyin:
 
 1. Projeyi fork edin
 2. Feature branch oluşturun (`git checkout -b feature/AmazingFeature`)

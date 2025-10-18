@@ -1,6 +1,6 @@
 """
 Neural Network Algorithms Package
-Tek katmanlı ve çok katmanlı sinir ağı algoritmalarını içerir.
+Single-layer and multi-layer neural network algorithms.
 """
 
 from .single_layer import Perceptron, DeltaRule

@@ -1,6 +1,6 @@
 """
 GUI Components Package
-CustomTkinter tabanlı kullanıcı arayüzü bileşenlerini içerir.
+CustomTkinter-based user interface components.
 """
 
 from .control_panel import ControlPanel
