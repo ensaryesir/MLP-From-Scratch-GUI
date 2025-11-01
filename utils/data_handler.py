@@ -1,9 +1,10 @@
 """
 Data management for the neural network visualizer.
 Handles training points, class labels, and train/test splitting.
+No external dependencies - all operations implemented manually.
 """
 
-import numpy as np
+import random
 
 
 class DataHandler:
@@ -42,38 +43,43 @@ class DataHandler:
         self.data_points = []
 
     def get_data_by_class(self, class_id):
-        """Get all points for a specific class as numpy array."""
+        """Get all points for a specific class as list of lists."""
         points = [p for p in self.data_points if p[2] == class_id]
         if len(points) == 0:
-            return np.array([]).reshape(0, 2)
-        return np.array([(p[0], p[1]) for p in points])
+            return []
+        return [[p[0], p[1]] for p in points]
 
     def get_all_data(self):
-        """Returns (X, y) as numpy arrays."""
+        """Returns (X, y) as lists."""
         if len(self.data_points) == 0:
-            return np.array([]).reshape(0, 2), np.array([])
+            return [], []
 
-        X = np.array([(p[0], p[1]) for p in self.data_points])
-        y = np.array([p[2] for p in self.data_points])
+        X = [[p[0], p[1]] for p in self.data_points]
+        y = [p[2] for p in self.data_points]
         return X, y
 
     def get_train_test_split(self, test_ratio=0.2, random_state=42):
         """Randomly split data into train and test sets."""
         if len(self.data_points) == 0:
-            empty = np.array([]).reshape(0, 2)
-            return empty, empty, np.array([]), np.array([])
+            return [], [], [], []
 
         X, y = self.get_all_data()
 
-        # shuffle using random permutation
-        np.random.seed(random_state)
-        indices = np.random.permutation(len(X))
+        # Shuffle using random permutation
+        random.seed(random_state)
+        indices = list(range(len(X)))
+        random.shuffle(indices)
 
         test_size = int(len(X) * test_ratio)
         test_idx = indices[:test_size]
         train_idx = indices[test_size:]
 
-        return X[train_idx], X[test_idx], y[train_idx], y[test_idx]
+        X_train = [X[i] for i in train_idx]
+        X_test = [X[i] for i in test_idx]
+        y_train = [y[i] for i in train_idx]
+        y_test = [y[i] for i in test_idx]
+
+        return X_train, X_test, y_train, y_test
 
     def get_color(self, class_id):
         """Get the color for a class (cycles if more classes than colors)."""
