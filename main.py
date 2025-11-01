@@ -6,7 +6,6 @@ Author: Ensar Yesir
 """
 
 import customtkinter as ctk
-import numpy as np
 from tkinter import messagebox
 import time
 
@@ -103,6 +102,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
         if response:
             self.data_handler.clear_data()
             self.visualization_frame.update_train_view(self.data_handler)
+            self.visualization_frame.clear_test_view()
             self.visualization_frame.clear_loss_history()
             self.control_panel.set_status("Data cleared")
     
@@ -208,7 +208,13 @@ class NeuralNetworkVisualizer(ctk.CTk):
             )
             
             y_pred = model.predict(self.X_test)
-            accuracy = np.mean(y_pred == self.y_test) * 100
+            
+            # Calculate accuracy manually
+            correct = 0
+            for i in range(len(y_pred)):
+                if y_pred[i] == self.y_test[i]:
+                    correct += 1
+            accuracy = (correct / len(y_pred)) * 100
             
             self.control_panel.set_status(f"Training complete! Test Accuracy: {accuracy:.2f}%")
             self.visualization_frame.switch_to_tab('test')
