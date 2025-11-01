@@ -7,7 +7,6 @@ import customtkinter as ctk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
-import numpy as np
 
 
 class VisualizationFrame(ctk.CTkFrame):
@@ -112,13 +111,17 @@ class VisualizationFrame(ctk.CTkFrame):
             points = data_handler.get_data_by_class(class_id)
             if len(points) > 0:
                 color = data_handler.get_color(class_id)
-                ax.scatter(points[:, 0], points[:, 1],
+                # Extract x and y coordinates
+                x_coords = [p[0] for p in points]
+                y_coords = [p[1] for p in points]
+                ax.scatter(x_coords, y_coords,
                           c=color, s=100, alpha=0.7,
                           edgecolors='black', linewidth=1.5,
                           label=data_handler.classes[class_id])
 
-        # add legend
-        if data_handler.get_num_classes() > 0:
+        # add legend only if there are labeled artists
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
             ax.legend(loc='upper right')
 
     def update_train_view(self, data_handler):
@@ -136,6 +139,17 @@ class VisualizationFrame(ctk.CTkFrame):
 
         self.train_canvas.draw()
 
+    def clear_test_view(self):
+        """Clear the test plot and reset it."""
+        self.test_ax.clear()
+        self.test_ax.set_xlim(-1, 11)
+        self.test_ax.set_ylim(-1, 11)
+        self.test_ax.set_xlabel('X')
+        self.test_ax.set_ylabel('Y')
+        self.test_ax.set_title('Test Data and Model Performance')
+        self.test_ax.grid(True, alpha=0.3)
+        self.test_canvas.draw()
+
     def update_decision_boundary(self, model, X, y, data_handler, tab_name='train'):
         """Draw decision boundary using trained model predictions on a meshgrid."""
         # select which plot to update
@@ -150,30 +164,74 @@ class VisualizationFrame(ctk.CTkFrame):
         
         ax.clear()
         
-        # create meshgrid
+        # create meshgrid manually
         x_min, x_max = -1, 11
         y_min, y_max = -1, 11
         h = 0.1  # Grid resolution
-        xx, yy = np.meshgrid(np.arange(x_min, x_max, h),
-                            np.arange(y_min, y_max, h))
+        
+        # Create ranges manually
+        x_range = []
+        x_val = x_min
+        while x_val < x_max:
+            x_range.append(x_val)
+            x_val += h
+        
+        y_range = []
+        y_val = y_min
+        while y_val < y_max:
+            y_range.append(y_val)
+            y_val += h
+        
+        # Create meshgrid manually
+        xx = []
+        yy = []
+        for y_val in y_range:
+            xx_row = []
+            yy_row = []
+            for x_val in x_range:
+                xx_row.append(x_val)
+                yy_row.append(y_val)
+            xx.append(xx_row)
+            yy.append(yy_row)
+        
+        # Flatten the meshgrid and create input for prediction
+        grid_points = []
+        for i in range(len(xx)):
+            for j in range(len(xx[0])):
+                grid_points.append([xx[i][j], yy[i][j]])
         
         # predict on grid
-        Z = model.predict(np.c_[xx.ravel(), yy.ravel()])
-        Z = Z.reshape(xx.shape)
+        Z = model.predict(grid_points)
+        
+        # Reshape Z back to grid shape
+        Z_grid = []
+        idx = 0
+        for i in range(len(xx)):
+            Z_row = []
+            for j in range(len(xx[0])):
+                Z_row.append(Z[idx])
+                idx += 1
+            Z_grid.append(Z_row)
         
         # draw decision regions with contourf
         n_classes = data_handler.get_num_classes()
         colors = [data_handler.get_color(i) for i in range(n_classes)]
-        ax.contourf(xx, yy, Z, alpha=0.3, levels=np.arange(n_classes + 1) - 0.5,
-                   colors=colors)
+        
+        # Create levels for contourf
+        levels = [i - 0.5 for i in range(n_classes + 1)]
+        ax.contourf(xx, yy, Z_grid, alpha=0.3, levels=levels, colors=colors)
         
         # overlay data points
         if len(X) > 0:
             for class_id in range(n_classes):
-                mask = y == class_id
-                if np.any(mask):
+                # Create mask manually
+                mask = [y[i] == class_id for i in range(len(y))]
+                if any(mask):
                     color = data_handler.get_color(class_id)
-                    ax.scatter(X[mask, 0], X[mask, 1],
+                    # Extract points matching this class
+                    x_coords = [X[i][0] for i in range(len(X)) if mask[i]]
+                    y_coords = [X[i][1] for i in range(len(X)) if mask[i]]
+                    ax.scatter(x_coords, y_coords,
                              c=color, s=100, alpha=0.8,
                              edgecolors='black', linewidth=1.5,
                              label=data_handler.classes[class_id])
@@ -185,7 +243,8 @@ class VisualizationFrame(ctk.CTkFrame):
         ax.set_title(title)
         ax.grid(True, alpha=0.3)
         
-        if n_classes > 0:
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
             ax.legend(loc='upper right')
         
         canvas.draw()
