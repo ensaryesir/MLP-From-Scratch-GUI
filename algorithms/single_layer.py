@@ -10,35 +10,14 @@ import random
 import math
 
 
-class Perceptron:
+class MatrixOperations:
     """
-    Classic Perceptron algorithm (Rosenblatt, 1958).
-    Single neuron with step activation - only works for linearly separable data.
-    Learning rule: Δw = η * (y_true - y_pred) * x
+    Utility class for manual matrix operations without NumPy.
+    Provides basic linear algebra operations using nested loops.
     """
-
-    def __init__(self, learning_rate=0.01, n_classes=2):
-        self.learning_rate = learning_rate
-        self.n_classes = n_classes
-        self.weights = None
-        self.bias = None
-
-    def _initialize_parameters(self, n_features):
-        # One weight vector per class - random small values
-        self.weights = []
-        for i in range(n_features):
-            row = []
-            for j in range(self.n_classes):
-                # Box-Muller transform for normal distribution
-                u1 = random.random()
-                u2 = random.random()
-                z = math.sqrt(-2.0 * math.log(u1 + 1e-10)) * math.cos(2.0 * math.pi * u2)
-                row.append(z * 0.01)
-            self.weights.append(row)
-        
-        self.bias = [[0.0 for _ in range(self.n_classes)]]
-
-    def _matrix_multiply(self, A, B):
+    
+    @staticmethod
+    def multiply(A, B):
         """Matrix multiplication: C = A @ B"""
         rows_A = len(A)
         cols_A = len(A[0]) if rows_A > 0 else 0
@@ -54,26 +33,42 @@ class Perceptron:
         
         return result
     
-    def _matrix_add(self, A, B):
-        """Matrix addition with broadcasting"""
+    @staticmethod
+    def add(A, B):
+        """Matrix addition with broadcasting support"""
         rows = len(A)
         cols = len(A[0]) if rows > 0 else 0
         
         result = [[0.0 for _ in range(cols)] for _ in range(rows)]
         
-        if len(B) == 1:
+        if len(B) == 1:  # Broadcasting: B is 1xN (bias vector)
             for i in range(rows):
                 for j in range(cols):
                     result[i][j] = A[i][j] + B[0][j]
-        else:
+        else:  # Normal element-wise addition
             for i in range(rows):
                 for j in range(cols):
                     result[i][j] = A[i][j] + B[i][j]
         
         return result
     
-    def _matrix_transpose(self, A):
-        """Matrix transpose"""
+    @staticmethod
+    def subtract(A, B):
+        """Matrix subtraction: C = A - B"""
+        rows = len(A)
+        cols = len(A[0]) if rows > 0 else 0
+        
+        result = [[0.0 for _ in range(cols)] for _ in range(rows)]
+        
+        for i in range(rows):
+            for j in range(cols):
+                result[i][j] = A[i][j] - B[i][j]
+        
+        return result
+    
+    @staticmethod
+    def transpose(A):
+        """Matrix transpose: A^T"""
         if not A or not A[0]:
             return [[]]
         rows = len(A)
@@ -83,12 +78,57 @@ class Perceptron:
             for j in range(cols):
                 result[j][i] = A[i][j]
         return result
+    
+    @staticmethod
+    def scalar_multiply(A, scalar):
+        """Multiply matrix by scalar: C = scalar * A"""
+        rows = len(A)
+        cols = len(A[0]) if rows > 0 else 0
+        
+        result = [[0.0 for _ in range(cols)] for _ in range(rows)]
+        
+        for i in range(rows):
+            for j in range(cols):
+                result[i][j] = A[i][j] * scalar
+        
+        return result
+
+
+class Perceptron:
+    """
+    Classic Perceptron algorithm (Rosenblatt, 1958).
+    Single neuron with step activation - only works for linearly separable data.
+    Learning rule: Δw = η * (y_true - y_pred) * x
+    """
+
+    def __init__(self, learning_rate=0.01, n_classes=2):
+        self.learning_rate = learning_rate
+        self.n_classes = n_classes
+        self.weights = None
+        self.bias = None
+        self.matrix_ops = MatrixOperations()  # Matrix operations helper
+
+    def _initialize_parameters(self, n_features):
+        # One weight vector per class - random small values
+        self.weights = []
+        for i in range(n_features):
+            row = []
+            for j in range(self.n_classes):
+                # Box-Muller transform for normal distribution
+                u1 = random.random()
+                u2 = random.random()
+                z = math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
+                row.append(z * 0.01)
+            self.weights.append(row)
+        
+        self.bias = [[0.0 for _ in range(self.n_classes)]]
 
     def predict(self, X):
         if self.weights is None:
             return [0 for _ in range(len(X))]
 
-        z = self._matrix_add(self._matrix_multiply(X, self.weights), self.bias)
+        # z = X × W + b (linear combination)
+        z = self.matrix_ops.add(self.matrix_ops.multiply(X, self.weights), self.bias)
         
         # Multi-class: pick highest activation
         predictions = []
@@ -125,7 +165,7 @@ class Perceptron:
                 yi = [y_onehot[i]]
                 
                 # Forward pass
-                z = self._matrix_add(self._matrix_multiply(xi, self.weights), self.bias)
+                z = self.matrix_ops.add(self.matrix_ops.multiply(xi, self.weights), self.bias)
                 
                 # Get prediction (one-hot)
                 prediction_onehot = [[0.0 for _ in range(self.n_classes)]]
@@ -144,8 +184,8 @@ class Perceptron:
                     total_error += abs(error[0][j])
                 
                 # Update weights: Δw = η * error * x
-                xi_T = self._matrix_transpose(xi)
-                weight_update = self._matrix_multiply(xi_T, error)
+                xi_T = self.matrix_ops.transpose(xi)
+                weight_update = self.matrix_ops.multiply(xi_T, error)
                 
                 for ii in range(len(self.weights)):
                     for jj in range(len(self.weights[0])):
@@ -170,6 +210,7 @@ class DeltaRule:
         self.n_classes = n_classes
         self.weights = None
         self.bias = None
+        self.matrix_ops = MatrixOperations()  # Matrix operations helper
         
     def _initialize_parameters(self, n_features):
         self.weights = []
@@ -179,83 +220,11 @@ class DeltaRule:
                 # Box-Muller transform for normal distribution
                 u1 = random.random()
                 u2 = random.random()
-                z = math.sqrt(-2.0 * math.log(u1 + 1e-10)) * math.cos(2.0 * math.pi * u2)
+                z = math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
                 row.append(z * 0.01)
             self.weights.append(row)
         
         self.bias = [[0.0 for _ in range(self.n_classes)]]
-    
-    def _matrix_multiply(self, A, B):
-        """Matrix multiplication"""
-        rows_A = len(A)
-        cols_A = len(A[0]) if rows_A > 0 else 0
-        rows_B = len(B)
-        cols_B = len(B[0]) if rows_B > 0 else 0
-        
-        result = [[0.0 for _ in range(cols_B)] for _ in range(rows_A)]
-        
-        for i in range(rows_A):
-            for j in range(cols_B):
-                for k in range(cols_A):
-                    result[i][j] += A[i][k] * B[k][j]
-        
-        return result
-    
-    def _matrix_add(self, A, B):
-        """Matrix addition with broadcasting"""
-        rows = len(A)
-        cols = len(A[0]) if rows > 0 else 0
-        
-        result = [[0.0 for _ in range(cols)] for _ in range(rows)]
-        
-        if len(B) == 1:
-            for i in range(rows):
-                for j in range(cols):
-                    result[i][j] = A[i][j] + B[0][j]
-        else:
-            for i in range(rows):
-                for j in range(cols):
-                    result[i][j] = A[i][j] + B[i][j]
-        
-        return result
-    
-    def _matrix_subtract(self, A, B):
-        """Matrix subtraction"""
-        rows = len(A)
-        cols = len(A[0]) if rows > 0 else 0
-        
-        result = [[0.0 for _ in range(cols)] for _ in range(rows)]
-        
-        for i in range(rows):
-            for j in range(cols):
-                result[i][j] = A[i][j] - B[i][j]
-        
-        return result
-    
-    def _matrix_transpose(self, A):
-        """Matrix transpose"""
-        if not A or not A[0]:
-            return [[]]
-        rows = len(A)
-        cols = len(A[0])
-        result = [[0.0 for _ in range(rows)] for _ in range(cols)]
-        for i in range(rows):
-            for j in range(cols):
-                result[j][i] = A[i][j]
-        return result
-    
-    def _matrix_scalar_multiply(self, A, scalar):
-        """Multiply matrix by scalar"""
-        rows = len(A)
-        cols = len(A[0]) if rows > 0 else 0
-        
-        result = [[0.0 for _ in range(cols)] for _ in range(rows)]
-        
-        for i in range(rows):
-            for j in range(cols):
-                result[i][j] = A[i][j] * scalar
-        
-        return result
         
     def _activation(self, x):
         """Linear activation: f(x) = x"""
@@ -265,7 +234,7 @@ class DeltaRule:
         if self.weights is None:
             return [0 for _ in range(len(X))]
         
-        z = self._matrix_add(self._matrix_multiply(X, self.weights), self.bias)
+        z = self.matrix_ops.add(self.matrix_ops.multiply(X, self.weights), self.bias)
         a = self._activation(z)
         
         # Pick class with highest output
@@ -296,41 +265,44 @@ class DeltaRule:
         
         for epoch in range(epochs):
             # Forward pass (batch)
-            z = self._matrix_add(self._matrix_multiply(X, self.weights), self.bias)
+            z = self.matrix_ops.add(self.matrix_ops.multiply(X, self.weights), self.bias)
             a = self._activation(z)
             
-            # Compute MSE loss
-            error = self._matrix_subtract(y_onehot, a)
+            # Compute error: e = y - a
+            error = self.matrix_ops.subtract(y_onehot, a)
             
-            # Compute mean squared error
+            # Compute mean squared error for monitoring
             loss = 0.0
             for i in range(len(error)):
                 for j in range(len(error[0])):
                     loss += error[i][j] ** 2
             loss /= (len(error) * len(error[0]))
             
-            # Compute gradients
-            # dW = -2 * X^T @ error / n_samples
-            X_T = self._matrix_transpose(X)
-            dW = self._matrix_scalar_multiply(
-                self._matrix_multiply(X_T, error),
-                -2.0 / n_samples
+            # Compute weight updates
+            # Delta Rule: Δw = η * (y - a) * x
+            # For MSE loss L = (1/2n)Σ(y-a)², gradient is: ∂L/∂w = -(1/n)X^T@(y-a)
+            # Gradient descent: w = w - η*∂L/∂w = w + η*(1/n)X^T@(y-a)
+            X_T = self.matrix_ops.transpose(X)
+            weight_gradient = self.matrix_ops.scalar_multiply(
+                self.matrix_ops.multiply(X_T, error),
+                1.0 / n_samples  # Normalized by batch size
             )
             
-            # db = -2 * mean(error)
-            db = [[0.0 for _ in range(self.n_classes)]]
+            # Compute bias updates: Δb = (1/n) * sum(y - a)
+            bias_gradient = [[0.0 for _ in range(self.n_classes)]]
             for i in range(len(error)):
                 for j in range(len(error[0])):
-                    db[0][j] += error[i][j]
-            for j in range(len(db[0])):
-                db[0][j] = -2.0 * db[0][j] / len(error)
+                    bias_gradient[0][j] += error[i][j]
+            for j in range(len(bias_gradient[0])):
+                bias_gradient[0][j] /= n_samples
             
-            # Update parameters
+            # Update parameters: w_new = w_old + η * gradient
+            # This implements: w = w - η*∂L/∂w = w + η*(1/n)*X^T@error
             for i in range(len(self.weights)):
                 for j in range(len(self.weights[0])):
-                    self.weights[i][j] -= self.learning_rate * dW[i][j]
+                    self.weights[i][j] += self.learning_rate * weight_gradient[i][j]
             
             for j in range(len(self.bias[0])):
-                self.bias[0][j] -= self.learning_rate * db[0][j]
+                self.bias[0][j] += self.learning_rate * bias_gradient[0][j]
             
             yield epoch + 1, loss, self
