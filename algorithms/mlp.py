@@ -8,24 +8,18 @@ Author: Ensar Yesir
 
 import random
 import math
+from .activation_functions import ActivationFunctions
 
 
-class MLP:
-    """MLP with backpropagation. Supports multiple layers and various activations."""
-
-    def __init__(self, layer_dims, activation_funcs, learning_rate=0.01, l2_lambda=0.0):
-        self.layer_dims = layer_dims
-        self.activation_funcs = activation_funcs
-        self.learning_rate = learning_rate
-        self.l2_lambda = l2_lambda
-        self.parameters = {}
-        self.L = len(layer_dims) - 1
-        
-        self._initialize_parameters()
+class MatrixOperations:
+    """
+    Utility class for manual matrix operations without NumPy.
+    Provides basic linear algebra operations using nested loops.
+    Extended version with additional operations for MLP.
+    """
     
-    # Helper functions for matrix operations
-    
-    def _matrix_multiply(self, A, B):
+    @staticmethod
+    def multiply(A, B):
         """Matrix multiplication: C = A @ B"""
         rows_A = len(A)
         cols_A = len(A[0]) if rows_A > 0 else 0
@@ -44,26 +38,27 @@ class MLP:
         
         return result
     
-    def _matrix_add(self, A, B):
-        """Matrix addition: C = A + B (with broadcasting for bias)"""
+    @staticmethod
+    def add(A, B):
+        """Matrix addition with broadcasting support"""
         rows = len(A)
         cols = len(A[0]) if rows > 0 else 0
         
         result = [[0.0 for _ in range(cols)] for _ in range(rows)]
         
-        # Handle broadcasting if B is 1xN (bias)
-        if len(B) == 1:
+        if len(B) == 1:  # Broadcasting: B is 1xN (bias vector)
             for i in range(rows):
                 for j in range(cols):
                     result[i][j] = A[i][j] + B[0][j]
-        else:
+        else:  # Normal element-wise addition
             for i in range(rows):
                 for j in range(cols):
                     result[i][j] = A[i][j] + B[i][j]
         
         return result
     
-    def _matrix_subtract(self, A, B):
+    @staticmethod
+    def subtract(A, B):
         """Matrix subtraction: C = A - B"""
         rows = len(A)
         cols = len(A[0]) if rows > 0 else 0
@@ -76,23 +71,21 @@ class MLP:
         
         return result
     
-    def _matrix_transpose(self, A):
+    @staticmethod
+    def transpose(A):
         """Matrix transpose: A^T"""
         if not A or not A[0]:
             return [[]]
-        
         rows = len(A)
         cols = len(A[0])
-        
         result = [[0.0 for _ in range(rows)] for _ in range(cols)]
-        
         for i in range(rows):
             for j in range(cols):
                 result[j][i] = A[i][j]
-        
         return result
     
-    def _matrix_scalar_multiply(self, A, scalar):
+    @staticmethod
+    def scalar_multiply(A, scalar):
         """Multiply matrix by scalar: C = scalar * A"""
         rows = len(A)
         cols = len(A[0]) if rows > 0 else 0
@@ -105,8 +98,9 @@ class MLP:
         
         return result
     
-    def _matrix_element_multiply(self, A, B):
-        """Element-wise multiplication: C = A * B"""
+    @staticmethod
+    def element_multiply(A, B):
+        """Element-wise multiplication: C = A ⊙ B (Hadamard product)"""
         rows = len(A)
         cols = len(A[0]) if rows > 0 else 0
         
@@ -118,7 +112,8 @@ class MLP:
         
         return result
     
-    def _matrix_sum(self, A):
+    @staticmethod
+    def sum_all(A):
         """Sum all elements in matrix"""
         total = 0.0
         for row in A:
@@ -126,7 +121,8 @@ class MLP:
                 total += val
         return total
     
-    def _matrix_sum_axis0(self, A):
+    @staticmethod
+    def sum_axis0(A):
         """Sum along axis 0 (column sums) - returns 1xN"""
         if not A or not A[0]:
             return [[]]
@@ -140,8 +136,9 @@ class MLP:
         
         return result
     
-    def _matrix_argmax_axis1(self, A):
-        """Find argmax along axis 1 (for predictions)"""
+    @staticmethod
+    def argmax_axis1(A):
+        """Find argmax along axis 1 (row-wise max index)"""
         result = []
         for row in A:
             if row:
@@ -155,6 +152,22 @@ class MLP:
             else:
                 result.append(0)
         return result
+
+
+class MLP:
+    """MLP with backpropagation. Supports multiple layers and various activations."""
+
+    def __init__(self, layer_dims, activation_funcs, learning_rate=0.01, l2_lambda=0.0):
+        self.layer_dims = layer_dims
+        self.activation_funcs = activation_funcs
+        self.learning_rate = learning_rate
+        self.l2_lambda = l2_lambda
+        self.parameters = {}
+        self.L = len(layer_dims) - 1
+        self.matrix_ops = MatrixOperations()  # Matrix operations helper
+        self.activations = ActivationFunctions()  # Activation functions helper
+        
+        self._initialize_parameters()
         
     def _initialize_parameters(self):
         """Initialize weights using He init for ReLU, Xavier for others."""
@@ -186,128 +199,13 @@ class MLP:
             # Initialize biases to zeros
             self.parameters[f'b{l}'] = [[0.0 for _ in range(cols)]]
     
-    # Activation functions
-    
-    def _relu(self, Z):
-        """ReLU: max(0, z)"""
-        result = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
-        for i in range(len(Z)):
-            for j in range(len(Z[0])):
-                result[i][j] = max(0.0, Z[i][j])
-        return result
-    
-    def _relu_backward(self, dA, Z):
-        """ReLU derivative: 1 if z > 0 else 0"""
-        result = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
-        for i in range(len(Z)):
-            for j in range(len(Z[0])):
-                if Z[i][j] <= 0:
-                    result[i][j] = 0.0
-                else:
-                    result[i][j] = dA[i][j]
-        return result
-    
-    def _tanh(self, Z):
-        """Tanh activation: range (-1, 1)"""
-        result = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
-        for i in range(len(Z)):
-            for j in range(len(Z[0])):
-                result[i][j] = math.tanh(Z[i][j])
-        return result
-    
-    def _tanh_backward(self, dA, Z):
-        """Tanh derivative: 1 - tanh^2(z)"""
-        result = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
-        for i in range(len(Z)):
-            for j in range(len(Z[0])):
-                tanh_val = math.tanh(Z[i][j])
-                result[i][j] = dA[i][j] * (1.0 - tanh_val ** 2)
-        return result
-    
-    def _sigmoid(self, Z):
-        """Sigmoid activation: range (0, 1)"""
-        result = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
-        for i in range(len(Z)):
-            for j in range(len(Z[0])):
-                # Clip for stability
-                z_val = max(-500, min(500, Z[i][j]))
-                result[i][j] = 1.0 / (1.0 + math.exp(-z_val))
-        return result
-    
-    def _sigmoid_backward(self, dA, Z):
-        """Sigmoid derivative: σ(z) * (1 - σ(z))"""
-        result = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
-        for i in range(len(Z)):
-            for j in range(len(Z[0])):
-                z_val = max(-500, min(500, Z[i][j]))
-                sig = 1.0 / (1.0 + math.exp(-z_val))
-                result[i][j] = dA[i][j] * sig * (1.0 - sig)
-        return result
-    
-    def _softmax(self, Z):
-        """Softmax: converts scores to probabilities"""
-        result = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
-        
-        for i in range(len(Z)):
-            # Find max for numerical stability
-            max_val = Z[i][0]
-            for j in range(1, len(Z[0])):
-                if Z[i][j] > max_val:
-                    max_val = Z[i][j]
-            
-            # Compute exp(z - max)
-            exp_vals = []
-            exp_sum = 0.0
-            for j in range(len(Z[0])):
-                exp_val = math.exp(Z[i][j] - max_val)
-                exp_vals.append(exp_val)
-                exp_sum += exp_val
-            
-            # Normalize
-            for j in range(len(Z[0])):
-                result[i][j] = exp_vals[j] / exp_sum
-        
-        return result
-    
-    def _softmax_backward(self, dA, Z):
-        """Softmax+CrossEntropy derivative: y_pred - y_true"""
-        return dA
-    
-    def _linear(self, Z):
-        """Linear activation: f(z) = z"""
-        return [row[:] for row in Z]
-    
-    def _linear_backward(self, dA, Z):
-        """Linear derivative: 1"""
-        return dA
-    
     def _activate(self, Z, activation):
-        if activation == 'relu':
-            return self._relu(Z)
-        elif activation == 'tanh':
-            return self._tanh(Z)
-        elif activation == 'sigmoid':
-            return self._sigmoid(Z)
-        elif activation == 'softmax':
-            return self._softmax(Z)
-        elif activation == 'linear':
-            return self._linear(Z)
-        else:
-            raise ValueError(f"Unknown activation: {activation}")
+        """Apply activation function (delegates to ActivationFunctions class)."""
+        return self.activations.apply(Z, activation)
     
     def _activate_backward(self, dA, Z, activation):
-        if activation == 'relu':
-            return self._relu_backward(dA, Z)
-        elif activation == 'tanh':
-            return self._tanh_backward(dA, Z)
-        elif activation == 'sigmoid':
-            return self._sigmoid_backward(dA, Z)
-        elif activation == 'softmax':
-            return self._softmax_backward(dA, Z)
-        elif activation == 'linear':
-            return self._linear_backward(dA, Z)
-        else:
-            raise ValueError(f"Unknown activation: {activation}")
+        """Apply activation derivative (delegates to ActivationFunctions class)."""
+        return self.activations.apply_backward(dA, Z, activation)
     
     # Forward and Backward Propagation
     
@@ -321,7 +219,7 @@ class MLP:
             W = self.parameters[f'W{l}']
             b = self.parameters[f'b{l}']
             
-            Z = self._matrix_add(self._matrix_multiply(A_prev, W), b)
+            Z = self.matrix_ops.add(self.matrix_ops.multiply(A_prev, W), b)
             activation = self.activation_funcs[l-1]
             A = self._activate(Z, activation)
             
@@ -374,7 +272,7 @@ class MLP:
         # Output layer gradient: dZ = A - Y
         cache_L = caches[L-1]
         A_L = self._activate(cache_L['Z'], cache_L['activation'])
-        dZ = self._matrix_subtract(A_L, Y)
+        dZ = self.matrix_ops.subtract(A_L, Y)
         
         # Iterate backwards through all layers
         for l in reversed(range(1, L + 1)):
@@ -383,21 +281,21 @@ class MLP:
             W = cache['W']
             
             # Compute weight gradient: dW = (1/m) * A_prev^T @ dZ
-            A_prev_T = self._matrix_transpose(A_prev)
-            dW = self._matrix_scalar_multiply(
-                self._matrix_multiply(A_prev_T, dZ), 
+            A_prev_T = self.matrix_ops.transpose(A_prev)
+            dW = self.matrix_ops.scalar_multiply(
+                self.matrix_ops.multiply(A_prev_T, dZ), 
                 1.0 / m
             )
             
             # Compute bias gradient: db = (1/m) * sum(dZ)
-            db = self._matrix_scalar_multiply(
-                self._matrix_sum_axis0(dZ),
+            db = self.matrix_ops.scalar_multiply(
+                self.matrix_ops.sum_axis0(dZ),
                 1.0 / m
             )
             
             # Add L2 regularization gradient if enabled
             if self.l2_lambda > 0:
-                l2_grad = self._matrix_scalar_multiply(W, self.l2_lambda / m)
+                l2_grad = self.matrix_ops.scalar_multiply(W, self.l2_lambda / m)
                 # Add l2_grad to dW
                 for i in range(len(dW)):
                     for j in range(len(dW[0])):
@@ -408,8 +306,8 @@ class MLP:
             
             # Compute gradient for previous layer
             if l > 1:
-                W_T = self._matrix_transpose(W)
-                dA_prev = self._matrix_multiply(dZ, W_T)
+                W_T = self.matrix_ops.transpose(W)
+                dA_prev = self.matrix_ops.multiply(dZ, W_T)
                 cache_prev = caches[l-2]
                 dZ = self._activate_backward(dA_prev, cache_prev['Z'], 
                                             cache_prev['activation'])
@@ -436,7 +334,7 @@ class MLP:
     def predict(self, X):
         """Make predictions. Returns class labels (not probabilities)."""
         A_final, _ = self._forward_propagation(X)
-        predictions = self._matrix_argmax_axis1(A_final)
+        predictions = self.matrix_ops.argmax_axis1(A_final)
         return predictions
     
     def fit(self, X, y, epochs=100, batch_size=32):
