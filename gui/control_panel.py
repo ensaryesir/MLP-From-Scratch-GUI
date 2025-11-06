@@ -63,7 +63,7 @@ class ControlPanel(ctk.CTkFrame):
                                    font=ctk.CTkFont(size=14, weight="bold"))
         model_label.pack(pady=5)
         
-        self.model_type = ctk.StringVar(value="MLP")
+        self.model_type = ctk.StringVar(value="Single-Layer (Perceptron)")
         self.model_menu = ctk.CTkOptionMenu(
             model_frame,
             values=["Single-Layer (Perceptron)", 
@@ -150,25 +150,25 @@ class ControlPanel(ctk.CTkFrame):
         self.epochs_entry.pack(side="right", padx=5)
         self.epochs_entry.insert(0, "100")
         
-        # Batch Size
-        batch_frame = ctk.CTkFrame(hyper_frame)
-        batch_frame.pack(fill="x", padx=10, pady=2)
+        # Batch Size (MLP only)
+        self.batch_frame = ctk.CTkFrame(hyper_frame)
+        self.batch_frame.pack(fill="x", padx=10, pady=2)
         
-        batch_label = ctk.CTkLabel(batch_frame, text="Batch Size:")
+        batch_label = ctk.CTkLabel(self.batch_frame, text="Batch Size:")
         batch_label.pack(side="left", padx=5)
         
-        self.batch_size_entry = ctk.CTkEntry(batch_frame, width=100)
+        self.batch_size_entry = ctk.CTkEntry(self.batch_frame, width=100)
         self.batch_size_entry.pack(side="right", padx=5)
         self.batch_size_entry.insert(0, "32")
         
-        # L2 Regularization
-        l2_frame = ctk.CTkFrame(hyper_frame)
-        l2_frame.pack(fill="x", padx=10, pady=2)
+        # L2 Regularization (MLP only)
+        self.l2_frame = ctk.CTkFrame(hyper_frame)
+        self.l2_frame.pack(fill="x", padx=10, pady=2)
         
-        l2_label = ctk.CTkLabel(l2_frame, text="L2 Regularization:")
+        l2_label = ctk.CTkLabel(self.l2_frame, text="L2 Regularization:")
         l2_label.pack(side="left", padx=5)
         
-        self.l2_entry = ctk.CTkEntry(l2_frame, width=100)
+        self.l2_entry = ctk.CTkEntry(self.l2_frame, width=100)
         self.l2_entry.pack(side="right", padx=5)
         self.l2_entry.insert(0, "0.0")
         
@@ -202,6 +202,9 @@ class ControlPanel(ctk.CTkFrame):
         self.status_label = ctk.CTkLabel(control_frame, text="Ready",
                                         font=ctk.CTkFont(size=12))
         self.status_label.pack(pady=5)
+        
+        # Set initial visibility based on default model type
+        self._on_model_changed(self.model_menu.get())
     
     def _on_add_class_clicked(self):
         if self.on_add_class:
@@ -220,15 +223,21 @@ class ControlPanel(ctk.CTkFrame):
             self.on_start_training()
     
     def _on_model_changed(self, choice):
-        """Show/hide MLP-specific params."""
+        """Show/hide model-specific parameters based on selection."""
         if "Multi-Layer" in choice:
+            # MLP: Show all parameters
             self.architecture_frame.pack(fill="x", padx=10, pady=2)
             self.activation_hidden_frame.pack(fill="x", padx=10, pady=2)
             self.activation_output_frame.pack(fill="x", padx=10, pady=2)
+            self.batch_frame.pack(fill="x", padx=10, pady=2)
+            self.l2_frame.pack(fill="x", padx=10, pady=2)
         else:
+            # Single-Layer (Perceptron/Delta Rule): Hide MLP-only parameters
             self.architecture_frame.pack_forget()
             self.activation_hidden_frame.pack_forget()
             self.activation_output_frame.pack_forget()
+            self.batch_frame.pack_forget()  # Hide batch size for single-layer
+            self.l2_frame.pack_forget()  # Hide L2 regularization for single-layer
     
     def update_class_radios(self, classes, colors):
         """Recreate radio buttons when classes change."""
