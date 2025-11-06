@@ -146,7 +146,20 @@ class NeuralNetworkVisualizer(ctk.CTk):
             architecture = self.control_panel.get_architecture()
             architecture[0] = 2
             architecture[-1] = n_classes
-            activation_funcs = self.control_panel.get_activation_functions()
+            activation_funcs_raw = self.control_panel.get_activation_functions()
+            
+            # Expand activation functions for all layers
+            # activation_funcs_raw = [hidden_activation, output_activation]
+            # We need one activation per layer: L layers = len(architecture) - 1
+            hidden_activation = activation_funcs_raw[0]  # e.g., "relu"
+            output_activation = activation_funcs_raw[1]  # e.g., "softmax"
+            
+            # Build activation list: all hidden layers use hidden_activation, last uses output_activation
+            num_layers = len(architecture) - 1
+            activation_funcs = [hidden_activation] * (num_layers - 1) + [output_activation]
+            # Example: for [2,5,3] → ["relu", "softmax"]
+            # Example: for [2,10,10,3] → ["relu", "relu", "softmax"]
+            
             l2_lambda = self.control_panel.get_l2_lambda()
             model = MLP(
                 layer_dims=architecture,
