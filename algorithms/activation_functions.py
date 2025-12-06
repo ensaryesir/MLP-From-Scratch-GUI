@@ -1,19 +1,7 @@
-"""
-Activation functions for neural networks.
-Includes forward and backward (derivative) implementations.
-No external dependencies - all operations implemented with nested loops.
-
-Author: Ensar Yesir
-"""
-
 import math
 
 
 class ActivationFunctions:
-    """
-    Utility class for activation functions and their derivatives.
-    Supports ReLU, Tanh, Sigmoid, Softmax, and Linear activations.
-    """
     
     @staticmethod
     def relu(Z):
@@ -129,8 +117,34 @@ class ActivationFunctions:
     @staticmethod
     def softmax_backward(dA, Z):
         """
-        Softmax derivative (combined with cross-entropy loss).
-        When used with cross-entropy, gradient simplifies to: y_pred - y_true
+        Softmax derivative (simplified for cross-entropy loss).
+        
+        IMPORTANT: This simplified form is ONLY valid when:
+        1. Softmax is used in the OUTPUT layer
+        2. Combined with cross-entropy loss
+        3. The gradient dA is already computed as (y_pred - y_true)
+        
+        Mathematical Background:
+        - Softmax: a_i = e^(z_i) / Σ(e^(z_j))
+        - Cross-Entropy: L = -Σ(y_i * log(a_i))
+        - Combined gradient: ∂L/∂z_i = a_i - y_i (simplifies!)
+        
+        In MLP implementation:
+        - Output layer: dZ = A_final - Y (computed in _backward_propagation)
+        - This function just passes dA through (no computation needed)
+        
+        For softmax in hidden layers (NOT RECOMMENDED):
+        - Full Jacobian matrix would be needed:
+          ∂a_i/∂z_j = a_i * (δ_ij - a_j)
+        - Where δ_ij is Kronecker delta (1 if i==j, else 0)
+        - But softmax is rarely used in hidden layers (use ReLU/tanh instead)
+        
+        Args:
+            dA: Gradient from next layer (should be y_pred - y_true for output)
+            Z: Pre-activation values (not used in simplified form)
+        
+        Returns:
+            dA: Gradient passed through unchanged
         """
         return dA
     
