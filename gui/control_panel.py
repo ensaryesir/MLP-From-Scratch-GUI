@@ -9,13 +9,14 @@ class ControlPanel(ctk.CTkFrame):
     """Right sidebar with all controls and hyperparameter inputs."""
 
     def __init__(self, master, on_add_class=None, on_remove_class=None,
-                 on_clear_data=None, on_start_training=None, **kwargs):
+                 on_clear_data=None, on_start_training=None, on_task_changed_callback=None, **kwargs):
         super().__init__(master, **kwargs)
 
         self.on_add_class = on_add_class
         self.on_remove_class = on_remove_class
         self.on_clear_data = on_clear_data
         self.on_start_training = on_start_training
+        self.on_task_changed_callback = on_task_changed_callback
         
         self.selected_class = ctk.IntVar(value=0)
         self.class_radio_buttons = []
@@ -29,13 +30,31 @@ class ControlPanel(ctk.CTkFrame):
                                    font=ctk.CTkFont(size=20, weight="bold"))
         title_label.pack(pady=10, padx=10)
         
+        # Task Selection
+        task_frame = ctk.CTkFrame(self)
+        task_frame.pack(fill="x", padx=10, pady=5)
+        
+        task_label = ctk.CTkLabel(task_frame, text="🎯 Task Type",
+                                  font=ctk.CTkFont(size=14, weight="bold"))
+        task_label.pack(pady=5)
+        
+        self.task_type = ctk.StringVar(value="Classification")
+        self.task_switch = ctk.CTkSegmentedButton(
+            task_frame,
+            values=["Classification", "Regression"],
+            variable=self.task_type,
+            command=self._on_task_changed
+        )
+        self.task_switch.pack(pady=5, padx=10, fill="x")
+
+        
         # Class Management
         class_frame = ctk.CTkFrame(self)
         class_frame.pack(fill="x", padx=10, pady=5)
         
-        class_label = ctk.CTkLabel(class_frame, text="🎨 Class Management",
+        self.class_label = ctk.CTkLabel(class_frame, text="🎨 Class Management",
                                    font=ctk.CTkFont(size=14, weight="bold"))
-        class_label.pack(pady=5)
+        self.class_label.pack(pady=5)
         
         # class buttons
         class_btn_frame = ctk.CTkFrame(class_frame)
@@ -137,18 +156,62 @@ class ControlPanel(ctk.CTkFrame):
         
         self.learning_rate_entry = ctk.CTkEntry(lr_frame, width=100)
         self.learning_rate_entry.pack(side="right", padx=5)
-        self.learning_rate_entry.insert(0, "0.01")
+        self.learning_rate_entry.insert(0, "0.1")
+        
+        # Stopping Criteria
+        stopping_frame = ctk.CTkFrame(hyper_frame)
+        stopping_frame.pack(fill="x", padx=10, pady=5)
+        
+        stopping_label = ctk.CTkLabel(stopping_frame, text="🛑 Stopping Criteria",
+                                     font=ctk.CTkFont(size=12, weight="bold"))
+        stopping_label.pack(pady=2)
+        
+        self.stopping_criteria = ctk.StringVar(value="error")
+        stopping_radio_frame = ctk.CTkFrame(stopping_frame)
+        stopping_radio_frame.pack(pady=2)
+        
+        epochs_radio = ctk.CTkRadioButton(
+            stopping_radio_frame,
+            text="Max Epochs",
+            variable=self.stopping_criteria,
+            value="epochs",
+            command=self._on_stopping_criteria_changed
+        )
+        epochs_radio.pack(side="left", padx=5)
+        
+        error_radio = ctk.CTkRadioButton(
+            stopping_radio_frame,
+            text="Min Error",
+            variable=self.stopping_criteria,
+            value="error",
+            command=self._on_stopping_criteria_changed
+        )
+        error_radio.pack(side="left", padx=5)
         
         # Epochs
-        epochs_frame = ctk.CTkFrame(hyper_frame)
-        epochs_frame.pack(fill="x", padx=10, pady=2)
+        self.epochs_frame = ctk.CTkFrame(hyper_frame)
+        self.epochs_frame.pack(fill="x", padx=10, pady=2)
         
-        epochs_label = ctk.CTkLabel(epochs_frame, text="Epochs:")
+        epochs_label = ctk.CTkLabel(self.epochs_frame, text="Max Epochs:")
         epochs_label.pack(side="left", padx=5)
         
-        self.epochs_entry = ctk.CTkEntry(epochs_frame, width=100)
+        self.epochs_entry = ctk.CTkEntry(self.epochs_frame, width=100)
         self.epochs_entry.pack(side="right", padx=5)
         self.epochs_entry.insert(0, "100")
+        
+        # Min Error
+        self.min_error_frame = ctk.CTkFrame(hyper_frame)
+        self.min_error_frame.pack(fill="x", padx=10, pady=2)
+        
+        min_error_label = ctk.CTkLabel(self.min_error_frame, text="Min Error:")
+        min_error_label.pack(side="left", padx=5)
+        
+        self.min_error_entry = ctk.CTkEntry(self.min_error_frame, width=100)
+        self.min_error_entry.pack(side="right", padx=5)
+        self.min_error_entry.insert(0, "0.001")
+        
+        # Initially hide min_error_frame (visibility updated below)
+        self.min_error_frame.pack_forget()
         
         # Batch Size (MLP only)
         self.batch_frame = ctk.CTkFrame(hyper_frame)
@@ -171,6 +234,27 @@ class ControlPanel(ctk.CTkFrame):
         self.l2_entry = ctk.CTkEntry(self.l2_frame, width=100)
         self.l2_entry.pack(side="right", padx=5)
         self.l2_entry.insert(0, "0.0")
+        
+        # Momentum (MLP only)
+        self.momentum_frame = ctk.CTkFrame(hyper_frame)
+        self.momentum_frame.pack(fill="x", padx=10, pady=2)
+        
+        self.use_momentum_var = ctk.BooleanVar(value=False)
+        self.momentum_check = ctk.CTkCheckBox(
+            self.momentum_frame, 
+            text="Use Momentum",
+            variable=self.use_momentum_var,
+            width=20
+        )
+        self.momentum_check.pack(side="left", padx=5)
+        
+        self.momentum_entry = ctk.CTkEntry(self.momentum_frame, width=80)
+        self.momentum_entry.pack(side="right", padx=5)
+        self.momentum_entry.insert(0, "0.9")
+        
+        mom_label = ctk.CTkLabel(self.momentum_frame, text="Factor:")
+        mom_label.pack(side="right", padx=2)
+
         
         # Test Split
         test_frame = ctk.CTkFrame(hyper_frame)
@@ -205,6 +289,10 @@ class ControlPanel(ctk.CTkFrame):
         
         # Set initial visibility based on default model type
         self._on_model_changed(self.model_menu.get())
+        # Set initial visibility for stopping criteria
+        self._on_stopping_criteria_changed()
+        # Apply initial hyperparameter presets for default task/model
+        self._apply_default_hyperparams()
     
     def _on_add_class_clicked(self):
         if self.on_add_class:
@@ -222,6 +310,81 @@ class ControlPanel(ctk.CTkFrame):
         if self.on_start_training:
             self.on_start_training()
     
+    def _on_task_changed(self, choice):
+        """Handle task switching (Classification vs Regression)."""
+        is_regression = (choice == "Regression")
+        
+        # Regression: Disable class management, force single output
+        if is_regression:
+            # Hide/disable class buttons for single-layer regression
+            self.add_class_btn.pack_forget()
+            self.remove_class_btn.pack_forget()
+            self.class_label.configure(text="📊 Output")
+            
+            # DON'T delete classes - just hide UI
+            # This preserves class data when switching back to classification
+            
+            # Update radio to show "Output" instead of "Class 0"
+            for i, radio in enumerate(self.class_radio_buttons):
+                if i == 0:
+                    radio.configure(text="  Continuous Output")
+                else:
+                    radio.pack_forget()  # Hide extra classes
+            
+            # Auto-select linear activation for regression
+            self.activation_output_var.set("linear")
+            
+            # Fix layer architecture: Last value should be 1 for regression
+            if hasattr(self, 'architecture_entry'):
+                try:
+                    arch_str = self.architecture_entry.get()
+                    arch = [int(x.strip()) for x in arch_str.split(',')]
+                    if len(arch) >= 2 and arch[-1] != 1:
+                        # Change last value to 1
+                        arch[-1] = 1
+                        new_arch_str = ','.join(map(str, arch))
+                        self.architecture_entry.delete(0, 'end')
+                        self.architecture_entry.insert(0, new_arch_str)
+                except:
+                    pass  # Invalid format, will be handled by get_architecture
+        
+        # Classification: Show class management
+        else:
+            self.add_class_btn.pack(side="left", padx=5)
+            self.remove_class_btn.pack(side="left", padx=5)
+            self.add_class_btn.configure(text="+ Class")
+            self.remove_class_btn.configure(text="- Class")
+            self.class_label.configure(text="🎨 Class Management")
+            
+            # Update radio texts to "Class X" and restore visibility
+            for i, radio in enumerate(self.class_radio_buttons):
+                radio.configure(text=f"  Class {i}")
+                # Restore visibility for hidden radios
+                radio.pack(anchor="w", padx=10, pady=2)
+            
+            # Reset selected class to first class (important after regression mode)
+            if len(self.class_radio_buttons) > 0:
+                self.selected_class.set(0)
+            
+            # Auto-select softmax for classification
+            self.activation_output_var.set("softmax")
+            
+        # Re-apply hyperparameter presets when task changes
+        self._apply_default_hyperparams()
+        
+        # Notify callback about task change
+        if self.on_task_changed_callback:
+            self.on_task_changed_callback(choice)
+
+    def _on_stopping_criteria_changed(self):
+        """Show/hide stopping criteria inputs based on selection."""
+        if self.stopping_criteria.get() == "epochs":
+            self.epochs_frame.pack(fill="x", padx=10, pady=2)
+            self.min_error_frame.pack_forget()
+        else:
+            self.epochs_frame.pack_forget()
+            self.min_error_frame.pack(fill="x", padx=10, pady=2)
+
     def _on_model_changed(self, choice):
         """Show/hide model-specific parameters based on selection."""
         if "Multi-Layer" in choice:
@@ -231,6 +394,7 @@ class ControlPanel(ctk.CTkFrame):
             self.activation_output_frame.pack(fill="x", padx=10, pady=2)
             self.batch_frame.pack(fill="x", padx=10, pady=2)
             self.l2_frame.pack(fill="x", padx=10, pady=2)
+            self.momentum_frame.pack(fill="x", padx=10, pady=2)
         else:
             # Single-Layer (Perceptron/Delta Rule): Hide MLP-only parameters
             self.architecture_frame.pack_forget()
@@ -238,7 +402,74 @@ class ControlPanel(ctk.CTkFrame):
             self.activation_output_frame.pack_forget()
             self.batch_frame.pack_forget()  # Hide batch size for single-layer
             self.l2_frame.pack_forget()  # Hide L2 regularization for single-layer
-    
+            self.momentum_frame.pack_forget()
+        
+        # Apply presets whenever model changes
+        self._apply_default_hyperparams()
+
+    def _apply_default_hyperparams(self):
+        """Apply model- and task-specific default hyperparameters."""
+        task = self.get_task_type()  # 'classification' or 'regression'
+        model = self.get_model_type()  # 'Perceptron', 'DeltaRule', 'MLP'
+
+        # Helper to safely set an entry widget
+        def set_entry(entry, value):
+            try:
+                entry.delete(0, 'end')
+                entry.insert(0, str(value))
+            except Exception:
+                pass
+
+        # Perceptron presets
+        if model == 'Perceptron':
+            if task == 'classification':
+                set_entry(self.learning_rate_entry, 0.1)
+                set_entry(self.epochs_entry, 200)
+                set_entry(self.min_error_entry, 0.001)
+            else:  # regression
+                set_entry(self.learning_rate_entry, 0.01)
+                set_entry(self.epochs_entry, 300)
+                set_entry(self.min_error_entry, 0.001)
+
+        # Delta Rule presets
+        elif model == 'DeltaRule':
+            if task == 'classification':
+                set_entry(self.learning_rate_entry, 0.01)
+                set_entry(self.epochs_entry, 300)
+                set_entry(self.min_error_entry, 0.001)
+            else:  # regression
+                set_entry(self.learning_rate_entry, 0.01)
+                set_entry(self.epochs_entry, 500)
+                set_entry(self.min_error_entry, 0.001)
+
+        # MLP presets
+        else:  # 'MLP'
+            if task == 'classification':
+                # Basic, smooth decision boundary
+                if hasattr(self, 'architecture_entry'):
+                    set_entry(self.architecture_entry, '2,10,1')
+                self.activation_hidden_var.set('tanh')
+                self.activation_output_var.set('softmax')
+                set_entry(self.learning_rate_entry, 0.01)
+                set_entry(self.batch_size_entry, 32)
+                set_entry(self.l2_entry, 0.001)
+                self.use_momentum_var.set(True)
+                set_entry(self.momentum_entry, 0.9)
+                set_entry(self.epochs_entry, 500)
+                set_entry(self.min_error_entry, 0.002)
+            else:  # regression
+                if hasattr(self, 'architecture_entry'):
+                    set_entry(self.architecture_entry, '1,10,1')
+                self.activation_hidden_var.set('tanh')
+                self.activation_output_var.set('linear')
+                set_entry(self.learning_rate_entry, 0.01)
+                set_entry(self.batch_size_entry, 16)
+                set_entry(self.l2_entry, 0.001)
+                self.use_momentum_var.set(True)
+                set_entry(self.momentum_entry, 0.9)
+                set_entry(self.epochs_entry, 500)
+                set_entry(self.min_error_entry, 0.002)
+
     def update_class_radios(self, classes, colors):
         """Recreate radio buttons when classes change."""
         # clear old
@@ -276,11 +507,24 @@ class ControlPanel(ctk.CTkFrame):
             return "MLP"
     
     def get_architecture(self):
+        """Get layer architecture with automatic regression validation."""
         try:
             arch_str = self.architecture_entry.get()
-            return [int(x.strip()) for x in arch_str.split(',')]
+            arch = [int(x.strip()) for x in arch_str.split(',')]
+            
+            # Validate for regression: Last value must be 1
+            if self.get_task_type() == 'regression' and len(arch) >= 2:
+                if arch[-1] != 1:
+                    # Auto-correct and update entry
+                    arch[-1] = 1
+                    new_arch_str = ','.join(map(str, arch))
+                    self.architecture_entry.delete(0, 'end')
+                    self.architecture_entry.insert(0, new_arch_str)
+            
+            return arch
         except:
-            return [2, 5, 3]
+            # Default fallback
+            return [2, 5, 3] if self.get_task_type() == 'classification' else [2, 5, 1]
     
     def get_activation_functions(self):
         try:
@@ -302,6 +546,21 @@ class ControlPanel(ctk.CTkFrame):
         except:
             return 100
     
+    def get_stopping_criteria(self):
+        """Returns ('epochs' or 'error', max_epochs, min_error)"""
+        criteria = self.stopping_criteria.get()
+        try:
+            max_epochs = int(self.epochs_entry.get()) if criteria == "epochs" else 10000  # Large default for error-based
+        except:
+            max_epochs = 10000
+        
+        try:
+            min_error = float(self.min_error_entry.get()) if criteria == "error" else 0.0
+        except:
+            min_error = 0.001
+        
+        return criteria, max_epochs, min_error
+    
     def get_batch_size(self):
         try:
             return int(self.batch_size_entry.get())
@@ -319,6 +578,17 @@ class ControlPanel(ctk.CTkFrame):
             return float(self.test_split_entry.get()) / 100.0
         except:
             return 0.2
+            
+    def get_task_type(self):
+        return self.task_type.get().lower()
+        
+    def get_momentum_config(self):
+        use_momentum = self.use_momentum_var.get()
+        try:
+            factor = float(self.momentum_entry.get())
+        except:
+            factor = 0.9
+        return use_momentum, factor
     
     def set_status(self, status_text):
         self.status_label.configure(text=status_text)
