@@ -1,7 +1,6 @@
 """
 Data management for the neural network visualizer.
 Handles training points, class labels, and train/test splitting.
-No external dependencies - all operations implemented manually.
 """
 
 import random
@@ -48,22 +47,56 @@ class DataHandler:
         if len(points) == 0:
             return []
         return [[p[0], p[1]] for p in points]
+    
+    def get_all_points(self):
+        """Get all data points regardless of class (for regression visualization)."""
+        if len(self.data_points) == 0:
+            return []
+        return [[p[0], p[1]] for p in self.data_points]
 
-    def get_all_data(self):
-        """Returns (X, y) as lists."""
+    def get_all_data(self, task='classification'):
+        """
+        Returns (X, y) as lists.
+        
+        Args:
+            task: 'classification' or 'regression'
+        
+        Returns:
+            For classification:
+                X = [[x, y], ...] (both coordinates)
+                y = [class_id, ...] (class labels)
+            
+            For regression:
+                X = [[x], ...] (only x coordinate)
+                y = [y_pos, ...] (y coordinate as target value)
+        """
         if len(self.data_points) == 0:
             return [], []
 
-        X = [[p[0], p[1]] for p in self.data_points]
-        y = [p[2] for p in self.data_points]
+        if task == 'regression':
+            # Regression: Predict Y coordinate from X coordinate
+            X = [[p[0]] for p in self.data_points]  # Only X feature
+            y = [p[1] for p in self.data_points]     # Y position as target
+        else:
+            # Classification: Use both coordinates, predict class
+            X = [[p[0], p[1]] for p in self.data_points]
+            y = [p[2] for p in self.data_points]  # Class ID
+        
         return X, y
 
-    def get_train_test_split(self, test_ratio=0.2, random_state=42):
-        """Randomly split data into train and test sets."""
+    def get_train_test_split(self, test_ratio=0.2, random_state=42, task='classification'):
+        """
+        Randomly split data into train and test sets.
+        
+        Args:
+            test_ratio: Fraction of data for testing
+            random_state: Random seed for reproducibility
+            task: 'classification' or 'regression'
+        """
         if len(self.data_points) == 0:
             return [], [], [], []
 
-        X, y = self.get_all_data()
+        X, y = self.get_all_data(task=task)  # Pass task parameter
 
         # Shuffle using random permutation
         random.seed(random_state)
