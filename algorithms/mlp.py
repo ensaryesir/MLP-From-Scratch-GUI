@@ -142,6 +142,7 @@ class MatrixOperations:
 
 
 class MLP:
+
     def __init__(self, layer_dims, activation_funcs, learning_rate=0.01, l2_lambda=0.0, 
                  task='classification', use_momentum=False, momentum_factor=0.9):
         self.layer_dims = layer_dims
@@ -202,7 +203,6 @@ class MLP:
                 self.velocities[f'dW{l}'] = [[0.0 for _ in range(cols)] for _ in range(rows)]
                 self.velocities[f'db{l}'] = [[0.0 for _ in range(cols)]]
 
-    
     def _activate(self, Z, activation):
         """Apply activation function (delegates to ActivationFunctions class)."""
         return self.activations.apply(Z, activation)
@@ -232,7 +232,7 @@ class MLP:
                 'W': W,
                 'b': b,
                 'Z': Z,
-                'activation': activation
+                'activation': activation,
             }
             caches.append(cache)
         
@@ -243,13 +243,13 @@ class MLP:
         m = len(Y)
         
         if self.task == 'regression':
-            # MSE Loss: (1/2m) * sum((y_pred - y_true)^2) - Standard form
+            # MSE Loss: (1/2m) * sum((y_pred - y_true)^2)
             loss = 0.0
             for i in range(len(Y)):
                 for j in range(len(Y[0])):
                     diff = A_final[i][j] - Y[i][j]
                     loss += diff * diff
-            loss /= (2 * m)  # Standard: 1/2m
+            loss /= (2 * m)
         else:
             # Cross-entropy with epsilon for numerical stability
             epsilon = 1e-8
@@ -290,12 +290,7 @@ class MLP:
         L = len(caches)
         
         # Output layer gradient
-        # Simplified gradient (dZ = A - Y) applies for:
-        # - Softmax + Cross-Entropy (classification)
-        # - Sigmoid + Binary Cross-Entropy (classification)
-        # - Linear + MSE (regression)
-        # For other combinations, would need: dL/dA * dA/dZ
-        cache_L = caches[L-1]
+        cache_L = caches[L - 1]
         A_L = self._activate(cache_L['Z'], cache_L['activation'])
         
         # Validate activation-task combination
@@ -303,47 +298,40 @@ class MLP:
         valid_combinations = [
             (output_activation == 'softmax' and self.task == 'classification'),
             (output_activation == 'sigmoid' and self.task == 'classification'),
-            (output_activation == 'linear' and self.task == 'regression')
+            (output_activation == 'linear' and self.task == 'regression'),
         ]
         
         if not any(valid_combinations):
-            print(f"Warning: Output activation '{output_activation}' with task '{self.task}' " 
-                  f"may require custom gradient computation. Using dZ = A - Y.")
+            print(
+                f"Warning: Output activation '{output_activation}' with task '{self.task}' "
+                f"may require custom gradient computation. Using dZ = A - Y."
+            )
         
-        # Output layer gradient
-        # For MSE Loss = (1/2m)*sum((A-Y)^2): dL/dA = (1/m) * (A - Y)
-        # For Cross-Entropy: dL/dA = (A - Y) (simplified form)
-        # Standard approach: Always use dZ = A - Y (no factor!)
+        # Simplified gradient dZ = A - Y
         dZ = self.matrix_ops.subtract(A_L, Y)
         
         # Iterate backwards through all layers
         for l in reversed(range(1, L + 1)):
-            cache = caches[l-1]
+            cache = caches[l - 1]
             A_prev = cache['A_prev']
             W = cache['W']
             
-            # Compute weight gradient: dW = (1/m) * A_prev^T @ dZ
-            # For regression with MSE = (1/2m)*Σ(A-Y)²: dL/dA = (1/m)*(A-Y), so dW = (1/m) * A_prev^T @ (A-Y) ✓
-            # For classification: dL/dA = (A-Y), so dW = (1/m) * A_prev^T @ (A-Y) ✓
+            # dW = (1/m) * A_prev^T @ dZ
             A_prev_T = self.matrix_ops.transpose(A_prev)
             dW = self.matrix_ops.scalar_multiply(
-                self.matrix_ops.multiply(A_prev_T, dZ), 
-                1.0 / m
+                self.matrix_ops.multiply(A_prev_T, dZ),
+                1.0 / m,
             )
             
-            # Compute bias gradient: db = (1/m) * sum(dZ)
+            # db = (1/m) * sum(dZ)
             db = self.matrix_ops.scalar_multiply(
                 self.matrix_ops.sum_axis0(dZ),
-                1.0 / m
+                1.0 / m,
             )
             
-            # Add L2 regularization gradient
-            # Loss function with L2: L = (1/m)*Σ(loss) + (lambda/2m)*Σ(W²)
-            # Gradient: ∂L/∂W = (1/m)*∂loss/∂W + (lambda/m)*W
-            # Both terms normalized by m for consistency with batch gradient descent
+            # L2 gradient
             if self.l2_lambda > 0:
                 l2_grad = self.matrix_ops.scalar_multiply(W, self.l2_lambda / m)
-                # Add l2_grad to dW
                 for i in range(len(dW)):
                     for j in range(len(dW[0])):
                         dW[i][j] += l2_grad[i][j]
@@ -351,13 +339,15 @@ class MLP:
             gradients[f'dW{l}'] = dW
             gradients[f'db{l}'] = db
             
-            # Compute gradient for previous layer
             if l > 1:
                 W_T = self.matrix_ops.transpose(W)
                 dA_prev = self.matrix_ops.multiply(dZ, W_T)
-                cache_prev = caches[l-2]
-                dZ = self._activate_backward(dA_prev, cache_prev['Z'], 
-                                            cache_prev['activation'])
+                cache_prev = caches[l - 2]
+                dZ = self._activate_backward(
+                    dA_prev,
+                    cache_prev['Z'],
+                    cache_prev['activation'],
+                )
         
         return gradients
     
@@ -369,33 +359,23 @@ class MLP:
             dW = gradients[f'dW{l}']
             db = gradients[f'db{l}']
             
-            # Apply Momentum or Standard GD
             if self.use_momentum:
                 v_dW = self.velocities[f'dW{l}']
                 v_db = self.velocities[f'db{l}']
                 
-                # Classic Momentum (Polyak, 1964): v_new = β · v_old + gradient
-                # Then: theta = theta - alpha * v_new
-                
-                # Weights
                 for i in range(len(W)):
                     for j in range(len(W[0])):
                         v_dW[i][j] = self.momentum_factor * v_dW[i][j] + dW[i][j]
                         W[i][j] -= self.learning_rate * v_dW[i][j]
                 
-                # Biases
                 for j in range(len(b[0])):
                     v_db[0][j] = self.momentum_factor * v_db[0][j] + db[0][j]
                     b[0][j] -= self.learning_rate * v_db[0][j]
-                    
             else:
-                # Standard Gradient Descent
-                # Update weights
                 for i in range(len(W)):
                     for j in range(len(W[0])):
                         W[i][j] -= self.learning_rate * dW[i][j]
                 
-                # Update biases
                 for j in range(len(b[0])):
                     b[0][j] -= self.learning_rate * db[0][j]
     
@@ -404,38 +384,30 @@ class MLP:
         A_final, _ = self._forward_propagation(X)
         
         if self.task == 'regression':
-            # For regression, return the raw values (flat list if scalar output)
             if len(A_final[0]) == 1:
                 return [row[0] for row in A_final]
             return A_final
         else:
-            # For classification, return class labels
-            predictions = self.matrix_ops.argmax_axis1(A_final)
-            return predictions
+            return self.matrix_ops.argmax_axis1(A_final)
     
     def fit(self, X, y, epochs=100, batch_size=32):
-        """Train using mini-batch gradient descent. Yields (epoch, loss, self) for each epoch."""
+        """Train using mini-batch gradient descent. Yields (epoch, loss, self)."""
         n_samples = len(X)
         
         if self.task == 'regression':
-            # For regression, target Y is the continuous value
-            n_outputs = self.layer_dims[-1]
             Y = []
             for val in y:
                 if isinstance(val, (list, tuple)):
                     Y.append(val)
                 else:
-                    Y.append([float(val)]) # Assume scalar target
+                    Y.append([float(val)])
         else:
-            # For classification, convert labels to one-hot encoding
             n_classes = self.layer_dims[-1]
             Y = [[0.0 for _ in range(n_classes)] for _ in range(n_samples)]
             for i in range(n_samples):
                 Y[i][int(y[i])] = 1.0
         
-        # Training loop
         for epoch in range(epochs):
-            # Shuffle data
             indices = list(range(n_samples))
             random.shuffle(indices)
             
@@ -443,28 +415,51 @@ class MLP:
             Y_shuffled = [Y[i] for i in indices]
             
             epoch_loss = 0.0
-            n_batches = 0
+            num_batches = 0  # Renamed: actually counts batches, not samples
             
-            # Mini-batch gradient descent
             for i in range(0, n_samples, batch_size):
-                X_batch = X_shuffled[i:i+batch_size]
-                Y_batch = Y_shuffled[i:i+batch_size]
+                X_batch = X_shuffled[i : i + batch_size]
+                Y_batch = Y_shuffled[i : i + batch_size]
                 
-                # Forward propagation
                 A_final, caches = self._forward_propagation(X_batch)
-                
-                # Compute loss
                 batch_loss = self._compute_loss(A_final, Y_batch)
-                # Weight by batch size for proper averaging
-                epoch_loss += batch_loss * len(X_batch)
-                n_batches += len(X_batch)
                 
-                # Backward propagation
+                # batch_loss is already averaged over samples in the batch
+                # We accumulate and will average over number of batches
+                epoch_loss += batch_loss
+                num_batches += 1
+                
                 gradients = self._backward_propagation(Y_batch, caches)
-                
-                # Update parameters
                 self._update_parameters(gradients)
             
-            # Average loss across all samples (not just batches)
-            avg_loss = epoch_loss / n_batches
+            # Average loss over all batches
+            avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
             yield epoch + 1, avg_loss, self
+
+    def compute_loss_on(self, X, y):
+        """Compute loss on arbitrary dataset (X, y) using current parameters.
+
+        Mirrors the loss definition used during training for both
+        classification (cross-entropy) and regression (MSE), including
+        L2 regularization.
+        """
+        n_samples = len(X)
+        if n_samples == 0:
+            return 0.0
+
+        if self.task == 'regression':
+            Y = []
+            for val in y:
+                if isinstance(val, (list, tuple)):
+                    Y.append(val)
+                else:
+                    Y.append([float(val)])
+        else:
+            n_classes = self.layer_dims[-1]
+            Y = [[0.0 for _ in range(n_classes)] for _ in range(n_samples)]
+            for i in range(n_samples):
+                Y[i][int(y[i])] = 1.0
+
+        A_final, _ = self._forward_propagation(X)
+        return self._compute_loss(A_final, Y)
+

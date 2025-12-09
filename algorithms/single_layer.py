@@ -228,6 +228,57 @@ class Perceptron:
             avg_error = total_error / (n_samples * self.n_classes)
             yield epoch + 1, avg_error, self
 
+#region - Compute Loss On
+'''
+    def compute_loss_on(self, X, y):
+        """Compute average absolute error (MAE) on arbitrary dataset (X, y).
+
+        Uses the same target encoding and error definition as in fit().
+        """
+        n_samples = len(X)
+        if n_samples == 0:
+            return 0.0
+
+        # Prepare targets like in fit()
+        if self.task == 'regression':
+            targets = []
+            for val in y:
+                if isinstance(val, (list, tuple)):
+                    targets.append(val)
+                else:
+                    targets.append([float(val)])
+        else:
+            targets = [[0.0 for _ in range(self.n_classes)] for _ in range(n_samples)]
+            for i in range(n_samples):
+                targets[i][int(y[i])] = 1.0
+
+        total_error = 0.0
+        for i in range(n_samples):
+            xi = [X[i]]
+            target_i = [targets[i]]
+
+            z = self.matrix_ops.add(self.matrix_ops.multiply(xi, self.weights), self.bias)
+
+            if self.task == 'regression':
+                output = z
+            else:
+                output = [[0.0 for _ in range(self.n_classes)]]
+                max_idx = 0
+                max_val = z[0][0]
+                for j in range(1, len(z[0])):
+                    if z[0][j] > max_val:
+                        max_val = z[0][j]
+                        max_idx = j
+                output[0][max_idx] = 1.0
+
+            for j in range(self.n_classes):
+                err = target_i[0][j] - output[0][j]
+                total_error += abs(err)
+
+        avg_error = total_error / (n_samples * self.n_classes)
+        return avg_error
+'''
+#regionend
 
 class DeltaRule:
     """
@@ -258,6 +309,7 @@ class DeltaRule:
             self.weights.append(row)
         
         self.bias = [[0.0 for _ in range(self.n_classes)]]
+
     def _activation(self, x):
         """Linear activation: f(x) = x (no transformation)."""
         return [row[:] for row in x]
@@ -354,3 +406,39 @@ class DeltaRule:
             
             # Return MSE loss
             yield epoch + 1, loss, self
+
+#region - Compute Loss On
+'''
+    def compute_loss_on(self, X, y):
+        """Compute MSE on arbitrary dataset (X, y) using current parameters."""
+        n_samples = len(X)
+        if n_samples == 0:
+            return 0.0
+
+        # Prepare targets (same as in fit)
+        if self.task == 'regression':
+            targets = []
+            for val in y:
+                if isinstance(val, (list, tuple)):
+                    targets.append(val)
+                else:
+                    targets.append([float(val)])
+        else:
+            targets = [[0.0 for _ in range(self.n_classes)] for _ in range(n_samples)]
+            for i in range(n_samples):
+                targets[i][int(y[i])] = 1.0
+
+        # Forward pass
+        z = self.matrix_ops.add(self.matrix_ops.multiply(X, self.weights), self.bias)
+        a = self._activation(z)
+
+        # Error and MSE (same formula as in fit)
+        error = self.matrix_ops.subtract(targets, a)
+        loss = 0.0
+        for i in range(len(error)):
+            for j in range(len(error[0])):
+                loss += error[i][j] ** 2
+        loss /= (len(error) * len(error[0]))
+        return loss
+'''
+#regionend
