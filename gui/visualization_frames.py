@@ -398,22 +398,52 @@ class VisualizationFrame(ctk.CTkFrame):
                 ax.legend(loc='upper right')
         
         canvas.draw()
-    
-    def update_loss_plot(self, epoch, loss):
-        """Add new loss value and refresh the loss curve."""
-        self.loss_history.append((epoch, loss))
+
+    def update_loss_plot(self, epoch, train_loss, val_loss=None):
+        """Add new train/validation loss values and refresh the loss curve."""
+        self.loss_history.append((epoch, train_loss, val_loss))
         self.loss_ax.clear()
-        
+
         if len(self.loss_history) > 0:
-            epochs, losses = zip(*self.loss_history)
-            self.loss_ax.plot(epochs, losses, 'b-', linewidth=2, marker='o', markersize=4)
+            epochs = [e for e, _, _ in self.loss_history]
+            train_losses = [tl for _, tl, _ in self.loss_history]
+
+            # Training loss (blue)
+            self.loss_ax.plot(
+                epochs,
+                train_losses,
+                'b-',
+                linewidth=2,
+                marker='o',
+                markersize=4,
+                label='Training Error',
+            )
+
+            # Validation loss (red), if any val_loss is provided
+            if any(vl is not None for _, _, vl in self.loss_history):
+                val_epochs = [e for (e, _, vl) in self.loss_history if vl is not None]
+                val_values = [vl for (_, _, vl) in self.loss_history if vl is not None]
+                if len(val_epochs) > 0:
+                    self.loss_ax.plot(
+                        val_epochs,
+                        val_values,
+                        'r-',
+                        linewidth=2,
+                        marker='s',
+                        markersize=4,
+                        label='Validation Error',
+                    )
+
             self.loss_ax.set_xlabel('Epoch')
             self.loss_ax.set_ylabel('Error')
-            self.loss_ax.set_title('Training Error')
+            self.loss_ax.set_title('Training / Validation Error')
             self.loss_ax.grid(True, alpha=0.3)
-        
+            handles, _ = self.loss_ax.get_legend_handles_labels()
+            if handles:
+                self.loss_ax.legend(loc='upper right')
+
         self.loss_canvas.draw()
-    
+
     def clear_loss_history(self):
         """Clear loss history and reset plot."""
         self.loss_history = []
@@ -423,17 +453,17 @@ class VisualizationFrame(ctk.CTkFrame):
         self.loss_ax.set_title('Error During Training')
         self.loss_ax.grid(True, alpha=0.3)
         self.loss_canvas.draw()
-    
+
     def switch_to_tab(self, tab_name):
         """Switch to a specific tab by name."""
         tab_mapping = {
             'train': "🎯 Training",
             'test': "📊 Test",
-            'loss': "📈 Error Graph"
+            'loss': "📈 Error Graph",
         }
         if tab_name in tab_mapping:
             self.tabview.set(tab_mapping[tab_name])
-    
+
     def enable_clicking(self, enabled=True):
         """Enable or disable clicking on the training plot."""
         self.click_enabled = enabled

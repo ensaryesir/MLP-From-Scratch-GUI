@@ -9,7 +9,8 @@ class ControlPanel(ctk.CTkFrame):
     """Right sidebar with all controls and hyperparameter inputs."""
 
     def __init__(self, master, on_add_class=None, on_remove_class=None,
-                 on_clear_data=None, on_start_training=None, on_task_changed_callback=None, **kwargs):
+                 on_clear_data=None, on_start_training=None, on_task_changed_callback=None,
+                 on_dataset_changed_callback=None, **kwargs):
         super().__init__(master, **kwargs)
 
         self.on_add_class = on_add_class
@@ -17,9 +18,11 @@ class ControlPanel(ctk.CTkFrame):
         self.on_clear_data = on_clear_data
         self.on_start_training = on_start_training
         self.on_task_changed_callback = on_task_changed_callback
+        self.on_dataset_changed_callback = on_dataset_changed_callback
         
         self.selected_class = ctk.IntVar(value=0)
         self.class_radio_buttons = []
+        self.dataset_mode = ctk.StringVar(value="Manual")
         
         self._setup_ui()
     
@@ -47,7 +50,21 @@ class ControlPanel(ctk.CTkFrame):
         )
         self.task_switch.pack(pady=5, padx=10, fill="x")
 
-        
+        dataset_frame = ctk.CTkFrame(self)
+        dataset_frame.pack(fill="x", padx=10, pady=5)
+
+        dataset_label = ctk.CTkLabel(dataset_frame, text="📚 Dataset",
+                                     font=ctk.CTkFont(size=14, weight="bold"))
+        dataset_label.pack(pady=5)
+
+        self.dataset_switch = ctk.CTkSegmentedButton(
+            dataset_frame,
+            values=["Manual", "MNIST"],
+            variable=self.dataset_mode,
+            command=self._on_dataset_changed,
+        )
+        self.dataset_switch.pack(pady=5, padx=10, fill="x")
+
         # Class Management
         class_frame = ctk.CTkFrame(self)
         class_frame.pack(fill="x", padx=10, pady=5)
@@ -309,6 +326,10 @@ class ControlPanel(ctk.CTkFrame):
     def _on_start_training_clicked(self):
         if self.on_start_training:
             self.on_start_training()
+
+    def _on_dataset_changed(self, choice):
+        if self.on_dataset_changed_callback:
+            self.on_dataset_changed_callback(choice)
     
     def _on_task_changed(self, choice):
         """Handle task switching (Classification vs Regression)."""
@@ -423,52 +444,52 @@ class ControlPanel(ctk.CTkFrame):
         # Perceptron presets
         if model == 'Perceptron':
             if task == 'classification':
-                set_entry(self.learning_rate_entry, 0.1)
-                set_entry(self.epochs_entry, 200)
-                set_entry(self.min_error_entry, 0.001)
-            else:  # regression
                 set_entry(self.learning_rate_entry, 0.01)
-                set_entry(self.epochs_entry, 300)
-                set_entry(self.min_error_entry, 0.001)
+                set_entry(self.epochs_entry, 100)
+                set_entry(self.min_error_entry, 0.01) 
+            else:  # regression
+                set_entry(self.learning_rate_entry, 0.01)  
+                set_entry(self.epochs_entry, 200)
+                set_entry(self.min_error_entry, 0.01) 
 
         # Delta Rule presets
         elif model == 'DeltaRule':
             if task == 'classification':
-                set_entry(self.learning_rate_entry, 0.01)
-                set_entry(self.epochs_entry, 300)
-                set_entry(self.min_error_entry, 0.001)
+                set_entry(self.learning_rate_entry, 0.01) 
+                set_entry(self.epochs_entry, 100)  
+                set_entry(self.min_error_entry, 0.01) 
             else:  # regression
-                set_entry(self.learning_rate_entry, 0.01)
-                set_entry(self.epochs_entry, 500)
-                set_entry(self.min_error_entry, 0.001)
+                set_entry(self.learning_rate_entry, 0.01)  
+                set_entry(self.epochs_entry, 200) 
+                set_entry(self.min_error_entry, 0.01) 
 
         # MLP presets
         else:  # 'MLP'
             if task == 'classification':
                 # Basic, smooth decision boundary
                 if hasattr(self, 'architecture_entry'):
-                    set_entry(self.architecture_entry, '2,10,1')
-                self.activation_hidden_var.set('tanh')
+                    set_entry(self.architecture_entry, '2,10,2')  
+                self.activation_hidden_var.set('tanh')  
                 self.activation_output_var.set('softmax')
-                set_entry(self.learning_rate_entry, 0.01)
-                set_entry(self.batch_size_entry, 32)
+                set_entry(self.learning_rate_entry, 0.01)  
+                set_entry(self.batch_size_entry, 16) 
                 set_entry(self.l2_entry, 0.001)
                 self.use_momentum_var.set(True)
                 set_entry(self.momentum_entry, 0.9)
-                set_entry(self.epochs_entry, 500)
-                set_entry(self.min_error_entry, 0.002)
+                set_entry(self.epochs_entry, 500)  
+                set_entry(self.min_error_entry, 0.002)  
             else:  # regression
                 if hasattr(self, 'architecture_entry'):
-                    set_entry(self.architecture_entry, '1,10,1')
-                self.activation_hidden_var.set('tanh')
+                    set_entry(self.architecture_entry, '1,10,1')  
+                self.activation_hidden_var.set('tanh')  
                 self.activation_output_var.set('linear')
-                set_entry(self.learning_rate_entry, 0.01)
-                set_entry(self.batch_size_entry, 16)
+                set_entry(self.learning_rate_entry, 0.01) 
+                set_entry(self.batch_size_entry, 16)  
                 set_entry(self.l2_entry, 0.001)
                 self.use_momentum_var.set(True)
                 set_entry(self.momentum_entry, 0.9)
-                set_entry(self.epochs_entry, 500)
-                set_entry(self.min_error_entry, 0.002)
+                set_entry(self.epochs_entry, 500)  
+                set_entry(self.min_error_entry, 0.002)  
 
     def update_class_radios(self, classes, colors):
         """Recreate radio buttons when classes change."""
@@ -581,6 +602,9 @@ class ControlPanel(ctk.CTkFrame):
             
     def get_task_type(self):
         return self.task_type.get().lower()
+    
+    def get_dataset_mode(self):
+        return self.dataset_mode.get().lower()
         
     def get_momentum_config(self):
         use_momentum = self.use_momentum_var.get()
@@ -598,3 +622,88 @@ class ControlPanel(ctk.CTkFrame):
             self.train_btn.configure(state="normal")
         else:
             self.train_btn.configure(state="disabled")
+
+    def apply_mnist_mode(self):
+        """Configure UI for MNIST dataset mode (classification + MLP only)."""
+        # Disable manual class management (fixed MNIST labels)
+        self.add_class_btn.configure(state="disabled")
+        self.remove_class_btn.configure(state="disabled")
+
+        # Force classification task and disable task switching
+        self.task_type.set("Classification")
+        self.task_switch.configure(state="disabled")
+        # Reset task-dependent UI
+        self._on_task_changed("Classification")
+
+        # Restrict model selection to MLP only
+        self.model_menu.configure(
+            values=["Multi-Layer (MLP)"]
+        )
+        self.model_type.set("Multi-Layer (MLP)")
+        # Apply model-specific UI changes
+        self._on_model_changed("Multi-Layer (MLP)")
+
+        # Apply MNIST-specific hyperparameter presets
+        try:
+            # Learning rate - INCREASED for faster MNIST training
+            self.learning_rate_entry.delete(0, 'end')
+            self.learning_rate_entry.insert(0, "0.1")
+
+            # Test split
+            self.test_split_entry.delete(0, 'end')
+            self.test_split_entry.insert(0, "20")
+
+            # Stopping criteria: Epochs (more predictable for MNIST)
+            self.stopping_criteria.set("epochs")
+            self._on_stopping_criteria_changed()
+            self.epochs_entry.delete(0, 'end')
+            self.epochs_entry.insert(0, "100")
+            
+            # Also set min error for fallback
+            self.min_error_entry.delete(0, 'end')
+            self.min_error_entry.insert(0, "0.1") 
+
+            # Architecture for MNIST - IMPROVED with more capacity
+            self.architecture_entry.delete(0, 'end')
+            self.architecture_entry.insert(0, "784,128,64,10")
+
+            # Activations - CHANGED to ReLU for better performance
+            self.activation_hidden_var.set("relu")
+            self.activation_output_var.set("softmax")
+
+            # Batch size
+            self.batch_size_entry.delete(0, 'end')
+            self.batch_size_entry.insert(0, "32")
+
+            # L2 regularization - REDUCED for more flexibility
+            self.l2_entry.delete(0, 'end')
+            self.l2_entry.insert(0, "0.0001")
+
+            # Momentum
+            self.use_momentum_var.set(True)
+            self.momentum_entry.delete(0, 'end')
+            self.momentum_entry.insert(0, "0.9")
+        except Exception:
+            pass
+
+    def apply_manual_mode(self):
+        """Restore UI settings for manual dataset mode."""
+        # Re-enable class management buttons
+        self.add_class_btn.configure(state="normal")
+        self.remove_class_btn.configure(state="normal")
+
+        # Re-enable task switching
+        self.task_switch.configure(state="normal")
+
+        # Restore full model list
+        self.model_menu.configure(
+            values=[
+                "Single-Layer (Perceptron)",
+                "Single-Layer (Delta Rule)",
+                "Multi-Layer (MLP)",
+            ]
+        )
+        
+        # Reset hyperparameters to manual mode defaults
+        # This ensures MNIST values don't persist when switching back
+        self._apply_default_hyperparams()
