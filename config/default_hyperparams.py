@@ -80,7 +80,7 @@ MLP_DEFAULTS = {
         'use_momentum': True,
         'momentum_factor': 0.9,
         'epochs': 100,
-        'min_error': 0.1,
+        'min_error': 0.01,
         'test_split': 20,
     },
     'manual_classification': {
@@ -94,7 +94,7 @@ MLP_DEFAULTS = {
         'use_momentum': True,
         'momentum_factor': 0.9,
         'epochs': 500,
-        'min_error': 0.002,
+        'min_error': 0.01,
     },
     'manual_regression': {
         # Manual 2D data regression
@@ -107,7 +107,7 @@ MLP_DEFAULTS = {
         'use_momentum': True,
         'momentum_factor': 0.9,
         'epochs': 500,
-        'min_error': 0.002,
+        'min_error': 0.01,
     }
 }
 
@@ -128,11 +128,11 @@ AUTOENCODER_MLP_DEFAULTS = {
         'use_momentum': True,
         'momentum_factor': 0.9,
         'epochs': 100,  # Classifier training epochs
-        'min_error': 0.1,
+        'min_error': 0.01,
         # Autoencoder-specific parameters
         'ae_epochs': 50,  # Autoencoder pre-training epochs
         'ae_stopping_criteria': 'epochs',
-        'ae_min_error': 0.001,
+        'ae_min_error': 0.01,
         'freeze_encoder': True,  # Freeze encoder weights during classifier training
         'recon_samples': 10,  # Number of reconstruction samples to visualize
     },
@@ -148,11 +148,11 @@ AUTOENCODER_MLP_DEFAULTS = {
         'use_momentum': True,
         'momentum_factor': 0.9,
         'epochs': 500,
-        'min_error': 0.002,
+        'min_error': 0.01,
         # Autoencoder-specific (uses same defaults as MNIST)
         'ae_epochs': 50,
         'ae_stopping_criteria': 'epochs',
-        'ae_min_error': 0.001,
+        'ae_min_error': 0.01,
         'freeze_encoder': True,
         'recon_samples': 10,
     }

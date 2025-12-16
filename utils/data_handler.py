@@ -136,6 +136,8 @@ class DataHandler:
             y = max(0.1, min(9.9, y))
             self.add_point(x, y, class_id)
 
+    # --- Classification Presets ---    
+
     def generate_xor(self, n_samples=200):
         """Generate XOR dataset (Classification)."""
         self.clear_data()

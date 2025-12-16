@@ -146,7 +146,8 @@ class ControlPanel(ctk.CTkFrame):
 
     def __init__(self, parent, on_add_class=None, 
                  on_remove_class=None, on_clear_data=None, 
-                 on_start_training=None, on_task_changed_callback=None,
+
+                 on_start_training=None, on_stop_training=None, on_task_changed_callback=None,
                  on_dataset_changed_callback=None,
                  on_generate_xor=None, on_generate_circles=None,
                  on_generate_moons=None, on_generate_blobs=None,
@@ -159,6 +160,7 @@ class ControlPanel(ctk.CTkFrame):
         self.on_remove_class = on_remove_class
         self.on_clear_data = on_clear_data
         self.on_start_training = on_start_training
+        self.on_stop_training = on_stop_training
         self.on_task_changed_callback = on_task_changed_callback
         self.on_dataset_changed_callback = on_dataset_changed_callback
 
@@ -286,11 +288,8 @@ class ControlPanel(ctk.CTkFrame):
         self.model_menu.pack(pady=5, padx=10, fill="x")
         
         # Hyperparameters
-        hyper_frame = ctk.CTkFrame(self)
-        hyper_frame.pack(fill="x", padx=10, pady=5)
-        
-        hyper_label = ctk.CTkLabel(hyper_frame, text="⚡ Hyperparameters", font=ctk.CTkFont(size=14, weight="bold"))
-        hyper_label.pack(pady=5)
+        hyper_frame = ctk.CTkScrollableFrame(self, label_text="⚡ Hyperparameters", label_font=ctk.CTkFont(size=14, weight="bold"))
+        hyper_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
         # layer architecture
         self.architecture_frame = ctk.CTkFrame(hyper_frame)
@@ -503,7 +502,7 @@ class ControlPanel(ctk.CTkFrame):
         self.test_split_entry.insert(0, "20")
         
         # Control Buttons
-        control_frame = ctk.CTkFrame(self)
+        control_frame = ctk.CTkFrame(hyper_frame)
         control_frame.pack(fill="x", padx=10, pady=10)
         
         self.clear_btn = ctk.CTkButton(control_frame, text="🗑️ Clear Data", command=self._on_clear_data_clicked, fg_color="#E74C3C", hover_color="#C0392B")
@@ -511,6 +510,9 @@ class ControlPanel(ctk.CTkFrame):
         
         self.train_btn = ctk.CTkButton(control_frame, text="▶️ START TRAINING", command=self._on_start_training_clicked, fg_color="#27AE60", hover_color="#229954", font=ctk.CTkFont(size=14, weight="bold"))
         self.train_btn.pack(pady=5, padx=10, fill="x")
+        
+        self.stop_btn = ctk.CTkButton(control_frame, text="⏹️ STOP TRAINING", command=self._on_stop_training_clicked, fg_color="#E74C3C", hover_color="#C0392B", font=ctk.CTkFont(size=14, weight="bold"))
+        # Initially hidden (packed only during training)
         
         # status label
         self.status_label = ctk.CTkLabel(control_frame, text="Ready", font=ctk.CTkFont(size=12))
@@ -538,6 +540,10 @@ class ControlPanel(ctk.CTkFrame):
     def _on_start_training_clicked(self):
         if self.on_start_training:
             self.on_start_training()
+            
+    def _on_stop_training_clicked(self):
+        if self.on_stop_training:
+            self.on_stop_training()
 
     def _on_xor_clicked(self):
         if self.on_generate_xor: self.on_generate_xor()
@@ -859,9 +865,14 @@ class ControlPanel(ctk.CTkFrame):
     
     def enable_training(self, enabled=True):
         if enabled:
+            self.train_btn.pack(pady=5, padx=10, fill="x")
+            self.stop_btn.pack_forget()
             self.train_btn.configure(state="normal")
+            self.clear_btn.configure(state="normal")
         else:
-            self.train_btn.configure(state="disabled")
+            self.train_btn.pack_forget()
+            self.stop_btn.pack(pady=5, padx=10, fill="x")
+            self.clear_btn.configure(state="disabled")
 
     def apply_mnist_mode(self):
         """Configure UI for MNIST dataset mode (classification + MLP only)."""

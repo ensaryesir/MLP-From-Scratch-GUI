@@ -38,6 +38,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
         
         # training state
         self.is_training = False
+        self.stop_requested = False  # Flag to interrupt training
         self.trained_model = None
         self.trained_autoencoder = None  # NEW: Store trained autoencoder
         
@@ -66,6 +67,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
             on_remove_class=self._on_remove_class,
             on_clear_data=self._on_clear_data,
             on_start_training=self._on_start_training,
+            on_stop_training=self._on_stop_training,
             on_task_changed_callback=self._on_task_changed,
             on_dataset_changed_callback=self._on_dataset_changed,
             on_generate_xor=self._on_generate_xor,
@@ -235,8 +237,9 @@ class NeuralNetworkVisualizer(ctk.CTk):
         
         # prepare training
         self.is_training = True
+        self.stop_requested = False
         self.control_panel.enable_training(False)
-        self.control_panel.set_status("Training starting...")
+        self.control_panel.set_status("Initializing training...")
         self.visualization_frame.clear_loss_history()
         # Disable clicking during training
         self.visualization_frame.enable_clicking(False)
@@ -301,6 +304,23 @@ class NeuralNetworkVisualizer(ctk.CTk):
                 model, X_train, y_train, epochs, batch_size, stopping_criteria, min_error, model_type
             ),
         )
+
+    def _on_stop_training(self):
+        """Set flag to stop training."""
+        if self.is_training:
+            self.stop_requested = True
+            self.control_panel.set_status("Stop requested. Finishing current epoch...")
+        else:
+            messagebox.showinfo("Info", "No training in progress to stop.")
+
+    def _finish_training(self):
+        """Common cleanup after training stops (either completed or interrupted)."""
+        self.is_training = False
+        self.stop_requested = False
+        self.control_panel.enable_training(True)
+        self.visualization_frame.enable_clicking(True)
+        self.control_panel.set_status("Training stopped.")
+        messagebox.showinfo("Info", "Training stopped.")
 
     def _collect_hyperparameters(self):
         """Collect core hyperparameters from the control panel."""
@@ -426,16 +446,21 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.min_error = min_error
         
         if isinstance(model, (Perceptron, DeltaRule)):
-            fit_generator = model.fit(X_train, y_train, epochs=epochs)
+            self.fit_generator = model.fit(X_train, y_train, epochs=epochs)
         else:
-            fit_generator = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size)
+            self.fit_generator = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size)
         
-        self._train_next_epoch(fit_generator, X_train, y_train, model_type)
+        self._train_next_epoch(X_train, y_train, model_type)
     
-    def _train_next_epoch(self, fit_generator, X_train, y_train, model_type='MLP'):
+    def _train_next_epoch(self, X_train, y_train, model_type='MLP'):
         """Train one epoch and update visualizations (recursive async)."""
+        if self.stop_requested:
+            self.control_panel.set_status("Training interrupted by user.")
+            self._finish_training()
+            return
+
         try:
-            epoch, loss, model = next(fit_generator)
+            epoch, loss, model = next(self.fit_generator)
             self.current_model = model
             
             # No validation loss during training (removed for performance)
@@ -475,7 +500,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
                 return
             
             self.update_idletasks()
-            self.after(50, lambda: self._train_next_epoch(fit_generator, X_train, y_train, model_type))
+            self.after(50, lambda: self._train_next_epoch(X_train, y_train, model_type))
 
             
         except StopIteration:
@@ -494,6 +519,12 @@ class NeuralNetworkVisualizer(ctk.CTk):
         # Re-enable clicking after training
         self.visualization_frame.enable_clicking(True)
         
+        # Check for stop request
+        if self.stop_requested:
+            self.control_panel.set_status("Training interrupted by user.")
+            self._finish_training()
+            return
+
         # Debug: Test model predictions
         if self.current_task == 'regression':
             test_points = [[0.0], [5.0], [10.0]]
@@ -571,34 +602,28 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.control_panel.update_class_radios(classes, colors)
     
     def _run_training_autoencoder(self, X_train, y_train, epochs, batch_size, stopping_criteria, min_error):
-        """
-        Two-stage training for Autoencoder-based MLP:
-        Stage 1: Train autoencoder for feature extraction
-        Stage 2: Train MLP classifier with frozen/trainable encoder
-        """
+        """Prepare and start Stage 1 (Autoencoder) training."""
         # Get autoencoder configuration
         encoder_dims = self.control_panel.inputs.get_encoder_architecture()
         ae_stop_mode, ae_epochs, ae_min_error_val = self.control_panel.inputs.get_ae_stopping_config()
         freeze_encoder = self.control_panel.inputs.get_freeze_encoder()
         recon_samples = self.control_panel.inputs.get_recon_samples()
         
-        # Get MLP configuration
+        # Get MLP configuration (needed later for Stage 2)
         learning_rate = self.control_panel.inputs.get_learning_rate()
         use_momentum, momentum_factor = self.control_panel.inputs.get_momentum_config()
         
         # Encoder activations (all ReLU for encoder)
         num_encoder_layers = len(encoder_dims) - 1
-        encoder_activations = ['relu'] * (num_encoder_layers - 1) + ['relu']  # Last encoder layer also ReLU
+        encoder_activations = ['relu'] * (num_encoder_layers - 1) + ['relu']
         
-        # Decoder activations (symmetric, but last layer is sigmoid for pixel values 0-1)
+        # Decoder activations (last layer sigmoid for images)
         decoder_activations = ['relu'] * (num_encoder_layers - 1) + ['sigmoid']
-        
-        # Full autoencoder activations (encoder + decoder)
         ae_activations = encoder_activations + decoder_activations
         
-        self.control_panel.set_status("Stage 1/2: Training Autoencoder for feature extraction...")
+        self.control_panel.set_status("Stage 1/2: Training Autoencoder...")
         
-        # Stage 1: Train Autoencoder
+        # Stage 1: Initialize Autoencoder
         autoencoder = Autoencoder(
             encoder_dims=encoder_dims,
             activation_funcs=ae_activations,
@@ -607,67 +632,113 @@ class NeuralNetworkVisualizer(ctk.CTk):
             momentum_factor=momentum_factor,
         )
         
-        # Train autoencoder on unlabeled data (just X, ignore y)
-        ae_fit_generator = autoencoder.fit(X_train, epochs=ae_epochs, batch_size=batch_size)
+        # Create generator
+        self.ae_fit_generator = autoencoder.fit(X_train, epochs=ae_epochs, batch_size=batch_size)
         
-        # Training loop for autoencoder
-        for epoch, loss, trained_ae in ae_fit_generator:
-            # No validation loss during training (removed for performance)
-            val_loss = None
-            
-            # Update status
-            self.control_panel.set_status(f"Stage 1/2: AE Epoch {epoch}/{ae_epochs} - Recon Loss: {loss:.6f}")
-            
-            self.visualization_frame.update_loss_plot(epoch, loss, val_loss)
-            
-            # Update reconstruction visualization every 5 epochs or last epoch
-            if epoch % 5 == 0 or epoch == ae_epochs:
-                # Sample some images for reconstruction
-                sample_indices = list(range(min(recon_samples, len(X_train))))
-                X_sample = [X_train[i] for i in sample_indices]
-                
-                # Reconstruct
-                X_reconstructed = trained_ae.reconstruct(X_sample)
-                
-                # Compute MSE per sample
-                mse_per_sample = []
-                for i in range(len(X_sample)):
-                    mse = sum((X_sample[i][j] - X_reconstructed[i][j])**2 for j in range(len(X_sample[i]))) / len(X_sample[i])
-                    mse_per_sample.append(mse)
-                
-                # Update visualization
-                self.visualization_frame.update_reconstruction(X_sample, X_reconstructed, mse_per_sample)
-            
-            # Check stopping criteria
-            if ae_stop_mode == 'error' and loss <= ae_min_error_val:
-                self.control_panel.set_status(f"Stage 1/2: AE Converged at epoch {epoch} (Loss {loss:.6f} <= {ae_min_error_val})")
-                self.visualization_frame.update_loss_plot(epoch, loss, val_loss)
-                # Force last visualization update if needed, but break is sufficient
-                break
+        # Store context for Stage 2
+        self.stage2_context = {
+            'X_train': X_train, 'y_train': y_train,
+            'epochs': epochs, 'batch_size': batch_size,
+            'stopping_criteria': stopping_criteria, 'min_error': min_error,
+            'encoder_dims': encoder_dims, 'freeze_encoder': freeze_encoder,
+            'ae_stop_mode': ae_stop_mode, 'ae_min_error_val': ae_min_error_val,
+            'recon_samples': recon_samples,
+            'learning_rate': learning_rate, 'use_momentum': use_momentum, 'momentum_factor': momentum_factor,
+        }
+        
+        # Start async loop
+        self._train_autoencoder_next_epoch()
 
-            # Update idletasks for UI responsiveness (removed self.update() - too heavy)
-            self.update_idletasks()
+    def _train_autoencoder_next_epoch(self):
+        """Train one epoch of Autoencoder (Stage 1)."""
+        if self.stop_requested:
+            self.control_panel.set_status("AE training interrupted.")
+            self._finish_training()
+            return
+
+        try:
+            epoch, loss, trained_ae = next(self.ae_fit_generator)
+            self.current_model = trained_ae # Keep track of the latest trained AE
+            
+            # Check stopping criteria (Min Error)
+            ctx = self.stage2_context
+            if ctx['ae_stop_mode'] == 'error' and loss <= ctx['ae_min_error_val']:
+                self.control_panel.set_status(f"AE Converged (Loss {loss:.4f})")
+                self.visualization_frame.update_loss_plot(epoch, loss, None)
+                # Proceed to Stage 2 immediately
+                self._start_stage2_mlp(trained_ae)
+                return
+
+            self.control_panel.set_status(f"Stage 1/2: AE Epoch {epoch} - Recon Loss: {loss:.6f}")
+            self.visualization_frame.update_loss_plot(epoch, loss, None)
+            
+            # Visualize reconstructions periodically
+            if epoch % 5 == 0 or epoch == ctx['epochs']: # Assuming ctx['epochs'] is ae_epochs
+                self.visualization_frame.visualize_reconstructions(trained_ae, ctx['X_train'], num_samples=ctx['recon_samples'])
+                self.update_idletasks()
+            
+            # Schedule next epoch
+            self.after(20, self._train_autoencoder_next_epoch)
+            
+        except StopIteration:
+            # Stage 1 Complete (max epochs reached) -> Start Stage 2
+            self.control_panel.set_status(f"Stage 1/2 Complete! Final Reconstruction Loss: {self.current_model.loss:.6f}. Starting Stage 2 (MLP)...")
+            self.visualization_frame.clear_loss_history() # Clear for MLP training
+            self.after(500, lambda: self._start_stage2_mlp(self.current_model)) # Pass the last trained AE
+
+    def _start_stage2_mlp(self, trained_ae):
+        """Initialize and start Stage 2 (MLP training)."""
+        if self.stop_requested: # Double check
+            self._finish_training()
+            return
+            
+        self.trained_autoencoder = trained_ae # Save for reuse
+        ctx = self.stage2_context
         
-        # Store trained autoencoder
-        self.trained_autoencoder = autoencoder
+        self.control_panel.set_status("Stage 1 Complete. Starting Stage 2: MLP Training...")
         
-        # Extract latent features for visualization
-        latent_sample_size = min(500, len(X_train))  # Use subset for speed
-        X_latent_vis = X_train[:latent_sample_size]
-        y_latent_vis = y_train[:latent_sample_size]
-        latent_features = autoencoder.encode(X_latent_vis)
-        self.visualization_frame.update_latent_space(latent_features, y_latent_vis)
+        # Extract trained encoder weights
+        encoder_weights = trained_ae.encoder_weights
+        encoder_biases = trained_ae.encoder_biases
         
-        self.control_panel.set_status(f"Stage 1/2 Complete! Final Reconstruction Loss: {loss:.6f}")
+        # Stage 2: Initialize MLPWithEncoder
+        # Current MLP architecture from UI
+        mlp_layer_dims = self.control_panel.inputs.get_architecture() 
         
-        # Clear loss history for stage 2
-        self.visualization_frame.clear_loss_history()
+        # Ensure MLP input matches Encoder output
+        encoder_output_dim = ctx['encoder_dims'][-1]
+        if mlp_layer_dims[0] != encoder_output_dim:
+            print(f"Adjusting MLP input dim from {mlp_layer_dims[0]} to {encoder_output_dim} to match encoder.")
+            mlp_layer_dims[0] = encoder_output_dim
+            
+        activation_hidden = self.control_panel.inputs.get_hidden_activation()
+        activation_output = self.control_panel.inputs.get_output_activation()
         
-        # Small delay before stage 2
-        self.after(500, lambda: self._run_stage2_classifier(
-            autoencoder, X_train, y_train, epochs, batch_size, 
-            freeze_encoder, stopping_criteria, min_error
-        ))
+        # MLPWithEncoder activations
+        mlp_activations = [activation_hidden] * (len(mlp_layer_dims) - 2) + [activation_output]
+        
+        # Create Loop/Model
+        mlp_model = MLPWithEncoder(
+            encoder_dims=ctx['encoder_dims'],
+            mlp_layer_dims=mlp_layer_dims,
+            mlp_activations=mlp_activations,
+            learning_rate=ctx['learning_rate'],
+            l2_lambda=self.control_panel.inputs.get_l2_lambda(),
+            task='classification', # Autoencoder hybrid usually for classification
+            use_momentum=ctx['use_momentum'],
+            momentum_factor=ctx['momentum_factor'],
+            freeze_encoder=ctx['freeze_encoder']
+        )
+        
+        # Transfer trained weights
+        mlp_model.set_encoder_weights(encoder_weights, encoder_biases)
+        
+        # Create fit generator for Stage 2
+        self.fit_generator = mlp_model.fit(ctx['X_train'], ctx['y_train'], epochs=ctx['epochs'], batch_size=ctx['batch_size'])
+        
+        # Start async training loop for Stage 2
+        # Note: model_type should be passed to handle logging correctly if needed, or just 'AutoencoderMLP'
+        self._train_next_epoch(ctx['X_train'], ctx['y_train'], model_type='AutoencoderMLP')
     
     def _run_stage2_classifier(self, autoencoder, X_train, y_train, epochs, batch_size, 
                                 freeze_encoder, stopping_criteria, min_error):
