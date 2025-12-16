@@ -5,6 +5,8 @@ Handles training points, class labels, and train/test splitting.
 
 import random
 
+from config import COLOR_PALETTE
+
 
 class DataHandler:
     """
@@ -16,7 +18,7 @@ class DataHandler:
         self.data_points = []  # list of (x, y, class_id) tuples
         self.classes = []
         # color palette for visualization
-        self.colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F']
+        self.colors = COLOR_PALETTE
 
     def add_class(self, class_name=None):
         """Add a new class, auto-generating name if not provided."""

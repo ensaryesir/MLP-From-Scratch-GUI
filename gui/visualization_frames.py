@@ -8,6 +8,8 @@ import matplotlib.colors as mcolors
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from config import COLOR_PALETTE as COLOR_DIGITS, COLOR_DATA_POINTS, COLOR_REGRESSION_LINE
+
 
 class VisualizationFrame(ctk.CTkFrame):
     """
@@ -28,12 +30,11 @@ class VisualizationFrame(ctk.CTkFrame):
         self.tabview = ctk.CTkTabview(self, width=700, height=600)
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # add tabs
-        self.tabview.add("🎯 Training")
-        self.tabview.add("📊 Test")
-        self.tabview.add("📈 Error Graph")
+        # add tabs (manual mode by default)
+        self.current_dataset_mode = 'manual'
+        self._add_tabs_for_mode('manual')
 
-        # setup matplotlib figures for each tab
+        # setup matplotlib figures for manual mode tabs only
         self._setup_train_tab()
         self._setup_test_tab()
         self._setup_loss_tab()
@@ -88,7 +89,7 @@ class VisualizationFrame(ctk.CTkFrame):
         self.loss_ax = self.loss_fig.add_subplot(111)
         self.loss_ax.set_xlabel('Epoch')
         self.loss_ax.set_ylabel('Error')
-        self.loss_ax.set_title('Error During Training')
+        self.loss_ax.set_title('Training Error')
         self.loss_ax.grid(True, alpha=0.3)
 
         # embed in tkinter
@@ -120,7 +121,7 @@ class VisualizationFrame(ctk.CTkFrame):
                 x_coords = [p[0] for p in all_points]
                 y_coords = [p[1] for p in all_points]
                 ax.scatter(x_coords, y_coords,
-                          c='#4ECDC4', s=100, alpha=0.7,
+                          c=COLOR_DATA_POINTS, s=100, alpha=0.7,
                           edgecolors='black', linewidth=1.5,
                           label='Data Points')
         else:
@@ -169,6 +170,32 @@ class VisualizationFrame(ctk.CTkFrame):
         self.test_ax.grid(True, alpha=0.3)
         self.test_canvas.draw()
 
+    def _create_meshgrid(self, x_min=-1, x_max=11, y_min=-1, y_max=11, h=0.1):
+        """Create a 2D meshgrid for visualization."""
+        x_range = []
+        x_val = x_min
+        while x_val < x_max:
+            x_range.append(x_val)
+            x_val += h
+        
+        y_range = []
+        y_val = y_min
+        while y_val < y_max:
+            y_range.append(y_val)
+            y_val += h
+        
+        xx = []
+        yy = []
+        for y_v in y_range:
+            xx_row = []
+            yy_row = []
+            for x_v in x_range:
+                xx_row.append(x_v)
+                yy_row.append(y_v)
+            xx.append(xx_row)
+            yy.append(yy_row)
+        return xx, yy
+
     def update_decision_boundary(self, model, X, y, data_handler, tab_name='train', task='classification'):
         """Draw decision boundary (classification) or regression surface (regression)."""
         # select which plot to update
@@ -203,7 +230,7 @@ class VisualizationFrame(ctk.CTkFrame):
                 y_sorted = [p[1] for p in sorted_pairs]
                 
                 # Plot actual data points
-                ax.scatter(x_vals, y_vals, c='#4ECDC4', s=100, alpha=0.7,
+                ax.scatter(x_vals, y_vals, c=COLOR_DATA_POINTS, s=100, alpha=0.7,
                           edgecolors='black', linewidth=1.5, label='Data Points', zorder=3)
                 
                 # Create prediction line
@@ -224,7 +251,7 @@ class VisualizationFrame(ctk.CTkFrame):
                     y_pred = [p[0] if len(p) > 0 else 0.0 for p in y_pred]
                 
                 # Plot regression line
-                ax.plot(x_pred_range, y_pred, 'r-', linewidth=2, label='Model Prediction', zorder=2)
+                ax.plot(x_pred_range, y_pred, COLOR_REGRESSION_LINE, linewidth=2, label='Model Prediction', zorder=2)
                 
                 ax.set_xlim(x_min, x_max)
                 ax.set_ylim(-1, 11)
@@ -241,30 +268,7 @@ class VisualizationFrame(ctk.CTkFrame):
                 y_min, y_max = -1, 11
                 h = 0.1  # Grid resolution
                 
-                # Create ranges manually
-                x_range = []
-                x_val = x_min
-                while x_val < x_max:
-                    x_range.append(x_val)
-                    x_val += h
-                
-                y_range = []
-                y_val = y_min
-                while y_val < y_max:
-                    y_range.append(y_val)
-                    y_val += h
-                
-                # Create meshgrid manually
-                xx = []
-                yy = []
-                for y_val in y_range:
-                    xx_row = []
-                    yy_row = []
-                    for x_val in x_range:
-                        xx_row.append(x_val)
-                        yy_row.append(y_val)
-                    xx.append(xx_row)
-                    yy.append(yy_row)
+                xx, yy = self._create_meshgrid(x_min, x_max, y_min, y_max, h)
                 
                 # Flatten the meshgrid and create input for prediction
                 grid_points = []
@@ -319,30 +323,7 @@ class VisualizationFrame(ctk.CTkFrame):
             y_min, y_max = -1, 11
             h = 0.1  # Grid resolution
             
-            # Create ranges manually
-            x_range = []
-            x_val = x_min
-            while x_val < x_max:
-                x_range.append(x_val)
-                x_val += h
-            
-            y_range = []
-            y_val = y_min
-            while y_val < y_max:
-                y_range.append(y_val)
-                y_val += h
-            
-            # Create meshgrid manually
-            xx = []
-            yy = []
-            for y_val in y_range:
-                xx_row = []
-                yy_row = []
-                for x_val in x_range:
-                    xx_row.append(x_val)
-                    yy_row.append(y_val)
-                xx.append(xx_row)
-                yy.append(yy_row)
+            xx, yy = self._create_meshgrid(x_min, x_max, y_min, y_max, h)
             
             # Flatten the meshgrid and create input for prediction
             grid_points = []
@@ -436,7 +417,7 @@ class VisualizationFrame(ctk.CTkFrame):
 
             self.loss_ax.set_xlabel('Epoch')
             self.loss_ax.set_ylabel('Error')
-            self.loss_ax.set_title('Training / Validation Error')
+            self.loss_ax.set_title('Training Error')
             self.loss_ax.grid(True, alpha=0.3)
             handles, _ = self.loss_ax.get_legend_handles_labels()
             if handles:
@@ -450,7 +431,7 @@ class VisualizationFrame(ctk.CTkFrame):
         self.loss_ax.clear()
         self.loss_ax.set_xlabel('Epoch')
         self.loss_ax.set_ylabel('Error')
-        self.loss_ax.set_title('Error During Training')
+        self.loss_ax.set_title('Training Error')
         self.loss_ax.grid(True, alpha=0.3)
         self.loss_canvas.draw()
 
@@ -467,3 +448,222 @@ class VisualizationFrame(ctk.CTkFrame):
     def enable_clicking(self, enabled=True):
         """Enable or disable clicking on the training plot."""
         self.click_enabled = enabled
+    
+    def _add_tabs_for_mode(self, mode, model_type='MLP'):
+        """Add tabs based on dataset mode and model type."""
+        if mode == 'mnist':
+            # MNIST mode: Error Graph always, Reconstruction/Latent only for AutoencoderMLP
+            self.tabview.add("📈 Error Graph")
+            if model_type == 'AutoencoderMLP':
+                self.tabview.add("🔍 Reconstruction")
+                self.tabview.add("📉 Latent Space")
+        else:
+            # Manual mode: Training, Test, Error Graph
+            self.tabview.add("🎯 Training")
+            self.tabview.add("📊 Test")
+            self.tabview.add("📈 Error Graph")
+    
+    def configure_for_dataset_mode(self, mode, model_type='MLP'):
+        """Reconfigure tabs for dataset mode (manual vs mnist) and model type."""
+        if self.current_dataset_mode == mode:
+            return  # No change needed
+        
+        self.current_dataset_mode = mode
+        
+        # Get current tab before clearing
+        try:
+            current_tab = self.tabview.get()
+        except:
+            current_tab = None
+        
+        # Clear all tabs
+        for tab_name in self.tabview._tab_dict.copy():
+            self.tabview.delete(tab_name)
+        
+        # Re-add tabs for new mode (with model_type for MNIST)
+        self._add_tabs_for_mode(mode, model_type)
+        
+        # Re-setup figures
+        if mode == 'manual':
+            self._setup_train_tab()
+            self._setup_test_tab()
+            self._setup_loss_tab()
+            # Set to training tab by default
+            self.tabview.set("🎯 Training")
+        else:  # mnist
+            self._setup_loss_tab()
+            # Only setup reconstruction/latent tabs if AutoencoderMLP
+            if model_type == 'AutoencoderMLP':
+                self._setup_reconstruction_tab()
+                self._setup_latent_tab()
+            # Set to error graph by default
+            self.tabview.set("📈 Error Graph")
+            
+            # Force canvas update to prevent black screen - AGGRESSIVE FIX
+            # Immediate draw (attempt 1)
+            self.update()  # Force full update
+            if hasattr(self, 'loss_canvas'):
+                try:
+                    self.loss_canvas.draw()
+                    self.loss_canvas.flush_events()
+                except:
+                    pass
+            
+            # Delayed redraw (attempt 2 - 200ms)
+            def force_redraw_1():
+                try:
+                    self.update_idletasks()
+                    if hasattr(self, 'loss_canvas'):
+                        self.loss_canvas.draw_idle()
+                        self.loss_canvas.flush_events()
+                    if model_type == 'AutoencoderMLP':
+                        if hasattr(self, 'recon_canvas'):
+                            self.recon_canvas.draw_idle()
+                        if hasattr(self, 'latent_canvas'):
+                            self.latent_canvas.draw_idle()
+                except:
+                    pass
+            
+            # Second delayed redraw (attempt 3 - 500ms)
+            def force_redraw_2():
+                try:
+                    if hasattr(self, 'loss_canvas'):
+                        self.loss_canvas.draw()
+                        self.loss_canvas.flush_events()
+                except:
+                    pass
+            
+            # Schedule multiple redraws for reliability
+            self.after(200, force_redraw_1)
+            self.after(500, force_redraw_2)
+    
+    def _setup_reconstruction_tab(self):
+        """Setup reconstruction tab for autoencoder visualizations."""
+        tab = self.tabview.tab("🔍 Reconstruction")
+        
+        # create matplotlib figure
+        self.recon_fig = Figure(figsize=(7, 6), dpi=100)
+        self.recon_ax = self.recon_fig.add_subplot(111)
+        self.recon_ax.axis('off')
+        self.recon_ax.set_title('Original vs Reconstructed Digits')
+        
+        # embed in tkinter
+        self.recon_canvas = FigureCanvasTkAgg(self.recon_fig, tab)
+        self.recon_canvas.draw()
+        self.recon_canvas.get_tk_widget().pack(fill="both", expand=True)
+    
+    def _setup_latent_tab(self):
+        """Setup latent space visualization tab."""
+        tab = self.tabview.tab("📉 Latent Space")
+        
+        # create matplotlib figure
+        self.latent_fig = Figure(figsize=(7, 6), dpi=100)
+        self.latent_ax = self.latent_fig.add_subplot(111)
+        self.latent_ax.set_xlabel('Latent Dimension 1')
+        self.latent_ax.set_ylabel('Latent Dimension 2')
+        self.latent_ax.set_title('Latent Space Visualization (2D Projection)')
+        self.latent_ax.grid(True, alpha=0.3)
+        
+        # embed in tkinter
+        self.latent_canvas = FigureCanvasTkAgg(self.latent_fig, tab)
+        self.latent_canvas.draw()
+        self.latent_canvas.get_tk_widget().pack(fill="both", expand=True)
+    
+    def update_reconstruction(self, original_images, reconstructed_images, mse_per_sample=None):
+        """
+        Update reconstruction tab with original vs reconstructed digits.
+        
+        Args:
+            original_images: List of original images (flattened 784-dim)
+            reconstructed_images: List of reconstructed images (flattened 784-dim)
+            mse_per_sample: Optional list of MSE values per sample
+        """
+        self.recon_ax.clear()
+        self.recon_ax.axis('off')
+        
+        n_samples = min(len(original_images), 10)  # Show max 10 samples
+        if n_samples == 0:
+            self.recon_canvas.draw()
+            return
+        
+        # Create subplots grid: 2 rows (original, reconstructed) x n_samples columns
+        self.recon_fig.clear()
+        
+        for i in range(n_samples):
+            # Original image (top row)
+            ax_orig = self.recon_fig.add_subplot(2, n_samples, i + 1)
+            img_orig = [original_images[i][j:j+28] for j in range(0, 784, 28)]  # Reshape to 28x28
+            ax_orig.imshow(img_orig, cmap='gray')
+            ax_orig.axis('off')
+            if i == 0:
+                ax_orig.set_ylabel('Original', rotation=0, labelpad=40, fontsize=10)
+            
+            # Reconstructed image (bottom row)
+            ax_recon = self.recon_fig.add_subplot(2, n_samples, n_samples + i + 1)
+            img_recon = [reconstructed_images[i][j:j+28] for j in range(0, 784, 28)]  # Reshape to 28x28
+            ax_recon.imshow(img_recon, cmap='gray')
+            ax_recon.axis('off')
+            if i == 0:
+                ax_recon.set_ylabel('Reconstructed', rotation=0, labelpad=40, fontsize=10)
+            
+            # Show MSE if provided
+            if mse_per_sample and i < len(mse_per_sample):
+                ax_recon.set_title(f'MSE: {mse_per_sample[i]:.4f}', fontsize=8)
+        
+        self.recon_fig.tight_layout()
+        self.recon_canvas.draw()
+    
+    def update_latent_space(self, latent_features, labels, method='raw'):
+        """
+        Update latent space visualization with 2D scatter plot.
+        
+        Args:
+            latent_features: Latent representations (n_samples, latent_dim)
+            labels: Class labels for color coding
+            method: 'raw' (use first 2 dims) or 'tsne' (apply t-SNE)
+        """
+        self.latent_ax.clear()
+        
+        if len(latent_features) == 0:
+            self.latent_ax.set_title('Latent Space Visualization (No Data)')
+            self.latent_canvas.draw()
+            return
+        
+        # Extract 2D representation
+        latent_dim = len(latent_features[0])
+        
+        if method == 'raw' or latent_dim == 2:
+            # Use first 2 dimensions directly
+            x_coords = [f[0] for f in latent_features]
+            y_coords = [f[1] if latent_dim > 1 else 0.0 for f in latent_features]
+        else:
+            # For higher dimensions, we'd need t-SNE (not implemented yet)
+            # Fallback to first 2 dims
+            x_coords = [f[0] for f in latent_features]
+            y_coords = [f[1] if latent_dim > 1 else 0.0 for f in latent_features]
+        
+        # Color map for 10 digits
+        colors = COLOR_DIGITS
+        
+        # Plot each class separately for legend
+        for digit in range(10):
+            mask = [labels[i] == digit for i in range(len(labels))]
+            if any(mask):
+                x_class = [x_coords[i] for i in range(len(x_coords)) if mask[i]]
+                y_class = [y_coords[i] for i in range(len(y_coords)) if mask[i]]
+                self.latent_ax.scatter(
+                    x_class, y_class,
+                    c=colors[digit % len(colors)],
+                    s=50, alpha=0.7,
+                    edgecolors='black',
+                    linewidth=0.5,
+                    label=f'Digit {digit}'
+                )
+        
+        self.latent_ax.set_xlabel('Latent Dimension 1')
+        self.latent_ax.set_ylabel('Latent Dimension 2')
+        self.latent_ax.set_title('Latent Space Visualization (2D Projection)')
+        self.latent_ax.grid(True, alpha=0.3)
+        self.latent_ax.legend(loc='best', ncol=2, fontsize=8)
+        
+        self.latent_canvas.draw()

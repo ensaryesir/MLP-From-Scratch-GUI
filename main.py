@@ -9,6 +9,8 @@ from tkinter import messagebox
 from utils.data_handler import DataHandler
 from algorithms.single_layer import Perceptron, DeltaRule
 from algorithms.mlp import MLP
+from algorithms.autoencoder import Autoencoder
+from algorithms.mlp_with_encoder import MLPWithEncoder
 from utils.load_mnist import load_mnist_dataset
 from gui.control_panel import ControlPanel
 from gui.visualization_frames import VisualizationFrame
@@ -37,6 +39,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
         # training state
         self.is_training = False
         self.trained_model = None
+        self.trained_autoencoder = None  # NEW: Store trained autoencoder
         
         # setup UI
         self._setup_ui()
@@ -67,6 +70,9 @@ class NeuralNetworkVisualizer(ctk.CTk):
             on_dataset_changed_callback=self._on_dataset_changed,
         )
         self.control_panel.grid(row=0, column=1, sticky="nsew", padx=(5, 10), pady=10)
+        
+        # Set callback for model changes in MNIST mode
+        self.control_panel.on_model_changed_mnist_callback = self._on_model_changed_mnist
     
     # Event Handlers
     
@@ -129,14 +135,28 @@ class NeuralNetworkVisualizer(ctk.CTk):
             # Disable manual point adding when using MNIST
             self.visualization_frame.enable_clicking(False)
             self.control_panel.set_status("MNIST mode: using dataset/MNIST, click disabled.")
+            # Get current model type
+            model_type = self.control_panel.get_model_type()
+            # Reconfigure tabs for MNIST (model type determines if reconstruction/latent tabs shown)
+            self.visualization_frame.configure_for_dataset_mode('mnist', model_type)
             # Delegate detailed UI configuration to control panel
             self.control_panel.apply_mnist_mode()
         else:
             # Re-enable manual interaction
             self.visualization_frame.enable_clicking(True)
             self.control_panel.set_status("Manual mode: click to add training points.")
+            # Reconfigure tabs for Manual (show Training/Test, hide Reconstruction/Latent)
+            self.visualization_frame.configure_for_dataset_mode('manual')
             # Delegate manual mode UI restoration
             self.control_panel.apply_manual_mode()
+    
+    def _on_model_changed_mnist(self):
+        """Handle model changes in MNIST mode - update tabs."""
+        if self.dataset_mode == 'mnist':
+            model_type = self.control_panel.get_model_type()
+            # Force tab reconfiguration (even if mode hasn't changed)
+            self.visualization_frame.current_dataset_mode = None  # Force refresh
+            self.visualization_frame.configure_for_dataset_mode('mnist', model_type)
     
     def _on_start_training(self):
         """Initialize and start training process."""
@@ -222,10 +242,10 @@ class NeuralNetworkVisualizer(ctk.CTk):
     def _collect_hyperparameters(self):
         """Collect core hyperparameters from the control panel."""
         model_type = self.control_panel.get_model_type()
-        learning_rate = self.control_panel.get_learning_rate()
-        stopping_criteria, max_epochs, min_error = self.control_panel.get_stopping_criteria()
-        batch_size = self.control_panel.get_batch_size()
-        test_split = self.control_panel.get_test_split()
+        learning_rate = self.control_panel.inputs.get_learning_rate()
+        stopping_criteria, max_epochs, min_error = self.control_panel.inputs.get_stopping_criteria()
+        batch_size = self.control_panel.inputs.get_batch_size()
+        test_split = self.control_panel.inputs.get_test_split()
         task = self.control_panel.get_task_type()
         epochs = max_epochs  # Use max_epochs for fit() call (limited by stopping criteria)
 
@@ -241,49 +261,27 @@ class NeuralNetworkVisualizer(ctk.CTk):
         )
 
     def _prepare_training_data(self, task, test_split):
-        """Prepare X_train, X_val, X_test, y_train, y_val, y_test based on dataset mode."""
+        """Prepare X_train, X_test, y_train, y_test based on dataset mode (no validation set)."""
         if getattr(self, 'dataset_mode', 'manual') == 'mnist':
             # MNIST: classification with 10 classes, 784-dim input
             # Use a small, class-balanced subset for faster GUI training
-            # Here: 100 samples per digit for train (1000 total),
-            # 20 samples per digit for validation (200 total),
-            # and 10 samples per digit for test (100 total).
-            (X_train, y_train, X_val, y_val), (X_test, y_test) = load_mnist_dataset(
-                per_class_train=120,  # 100 for train + 20 for validation
-                per_class_test=10,
-                validation_split=0.1667  # 20/120 = 0.1667 to get 20 validation samples per class
+            # No validation set - only train and test
+            (X_train, y_train), (X_test, y_test) = load_mnist_dataset(
+                per_class_train=100,  # 100 samples per digit for training
+                per_class_test=10     # 10 samples per digit for testing
             )
             task = 'classification'
         else:
             # Manual 2D points via DataHandler
-            # First split into train+val and test
-            X_train_val, X_test, y_train_val, y_test = self.data_handler.get_train_test_split(
+            # Simple train/test split (no validation)
+            X_train, X_test, y_train, y_test = self.data_handler.get_train_test_split(
                 test_ratio=test_split,
                 task=task,
             )
-            
-            # For single-layer models, skip validation split (no overfitting risk)
-            # Only MLP uses validation set
-            model_type = self.control_panel.get_model_type()
-            if model_type == 'MLP':
-                # MLP: Split train+val into train and validation (80% train, 20% validation)
-                from sklearn.model_selection import train_test_split
-                X_train, X_val, y_train, y_val = train_test_split(
-                    X_train_val, y_train_val, 
-                    test_size=0.2, 
-                    random_state=42,
-                    stratify=y_train_val if task == 'classification' else None
-                )
-            else:
-                # Single-layer (Perceptron/Delta Rule): Use all training data, no validation
-                X_train = X_train_val
-                y_train = y_train_val
-                X_val = []
-                y_val = []
 
-        # Store validation set
-        self.X_val = X_val
-        self.y_val = y_val
+        # No validation set stored
+        self.X_val = []
+        self.y_val = []
         
         return X_train, X_test, y_train, y_test, task
 
@@ -302,8 +300,12 @@ class NeuralNetworkVisualizer(ctk.CTk):
                 n_classes=n_output_nodes,
                 task=task,
             )
+        elif model_type == "AutoencoderMLP":
+            # Autoencoder-based MLP: Two-stage training
+            # Model will be created in _run_training_autoencoder
+            model = None
         else:  # MLP
-            architecture = self.control_panel.get_architecture()
+            architecture = self.control_panel.inputs.get_architecture()
             # Set input size based on task and dataset
             if task == 'regression':
                 architecture[0] = 1  # Single feature (X coordinate)
@@ -332,8 +334,8 @@ class NeuralNetworkVisualizer(ctk.CTk):
             num_layers = len(architecture) - 1
             activation_funcs = [hidden_activation] * (num_layers - 1) + [output_activation]
 
-            l2_lambda = self.control_panel.get_l2_lambda()
-            use_momentum, momentum_factor = self.control_panel.get_momentum_config()
+            l2_lambda = self.control_panel.inputs.get_l2_lambda()
+            use_momentum, momentum_factor = self.control_panel.inputs.get_momentum_config()
 
             model = MLP(
                 layer_dims=architecture,
@@ -345,10 +347,17 @@ class NeuralNetworkVisualizer(ctk.CTk):
                 momentum_factor=momentum_factor,
             )
 
+
         return model, batch_size
     
     def _run_training(self, model, X_train, y_train, epochs, batch_size, stopping_criteria='epochs', min_error=0.001, model_type='MLP'):
         """Run training loop with real-time visualization updates."""
+        
+        # Special handling for Autoencoder-based MLP
+        if model_type == 'AutoencoderMLP':
+            self._run_training_autoencoder(X_train, y_train, epochs, batch_size, stopping_criteria, min_error)
+            return
+        
         self.current_model = model
         self.stopping_criteria = stopping_criteria
         self.min_error = min_error
@@ -366,36 +375,21 @@ class NeuralNetworkVisualizer(ctk.CTk):
             epoch, loss, model = next(fit_generator)
             self.current_model = model
             
-            # Compute validation loss ONLY for MLP (single-layer models don't need it)
+            # No validation loss during training (removed for performance)
             val_loss = None
-            if model_type == 'MLP':
-                if hasattr(self, 'X_val') and len(getattr(self, 'X_val', [])) > 0:
-                    # Use the same loss definition as training via compute_loss_on
-                    if hasattr(model, 'compute_loss_on'):
-                        val_loss = model.compute_loss_on(self.X_val, self.y_val)
 
-            # Check stopping criteria
+            # Check stopping criteria (only using training loss)
             should_stop = False
             stop_reason = ""
             
             if self.stopping_criteria == 'error':
-                # Check both training and validation error
-                # Prioritize validation error if available (better for generalization)
-                if val_loss is not None and val_loss <= self.min_error:
-                    should_stop = True
-                    stop_reason = f"Validation Error ({val_loss:.6f}) <= Min Error ({self.min_error:.6f})"
-                elif loss <= self.min_error:
+                if loss <= self.min_error:
                     should_stop = True
                     stop_reason = f"Training Error ({loss:.6f}) <= Min Error ({self.min_error:.6f})"
             
             # update UI
             if not should_stop:
-                if val_loss is not None:
-                    self.control_panel.set_status(
-                        f"Epoch {epoch} - Train Error: {loss:.4f}, Val Error: {val_loss:.4f}"
-                    )
-                else:
-                    self.control_panel.set_status(f"Epoch {epoch} - Error: {loss:.4f}")
+                self.control_panel.set_status(f"Epoch {epoch} - Train Error: {loss:.4f}")
             else:
                 self.control_panel.set_status(f"Training stopped! {stop_reason}")
 
@@ -445,28 +439,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
             print(f"  Input X values: {[p[0] for p in test_points]}")
             print(f"  Predicted Y values: {test_pred}")
         
-        # First show final validation performance
-        if hasattr(self, 'X_val') and len(self.X_val) > 0:
-            val_pred = model.predict(self.X_val)
-            
-            if self.current_task == 'regression':
-                # Calculate MSE for validation set
-                mse = 0.0
-                for i in range(len(val_pred)):
-                    diff = val_pred[i] - self.y_val[i]
-                    if isinstance(diff, list):
-                        diff = diff[0]
-                    mse += diff * diff
-                mse /= len(val_pred)
-                
-                self.control_panel.set_status(f"Training complete! Validation MSE: {mse:.4f}")
-            else:
-                # Calculate accuracy for validation set
-                correct = sum(1 for i in range(len(val_pred)) if val_pred[i] == self.y_val[i])
-                accuracy = (correct / len(val_pred)) * 100
-                self.control_panel.set_status(f"Training complete! Validation Accuracy: {accuracy:.2f}%")
-        
-        # Then evaluate on test set
+        # Evaluate on test set only (no validation)
         if hasattr(self, 'X_test') and len(self.X_test) > 0:
             # Only draw 2D decision boundary for manual dataset
             if getattr(self, 'dataset_mode', 'manual') == 'manual':
@@ -492,9 +465,6 @@ class NeuralNetworkVisualizer(ctk.CTk):
                 print(f"\n{'='*60}")
                 print(f"TRAINING COMPLETE - Final Results")
                 print(f"{'='*60}")
-                if hasattr(self, 'X_val') and len(self.X_val) > 0:
-                    val_loss = model.compute_loss_on(self.X_val, self.y_val)
-                    print(f"Validation Loss: {val_loss:.6f}")
                 print(f"Test MSE: {mse:.6f}")
                 print(f"Test Samples: {len(self.y_test)}")
                 print(f"{'='*60}\n")
@@ -513,12 +483,6 @@ class NeuralNetworkVisualizer(ctk.CTk):
                 print(f"\n{'='*60}")
                 print(f"TRAINING COMPLETE - Final Results")
                 print(f"{'='*60}")
-                if hasattr(self, 'X_val') and len(self.X_val) > 0:
-                    val_loss = model.compute_loss_on(self.X_val, self.y_val)
-                    val_correct = sum(1 for i in range(len(self.X_val)) if model.predict([self.X_val[i]])[0] == self.y_val[i])
-                    val_acc = (val_correct / len(self.y_val)) * 100
-                    print(f"Validation Loss: {val_loss:.6f}")
-                    print(f"Validation Accuracy: {val_acc:.2f}%")
                 print(f"Test Accuracy: {accuracy:.2f}%")
                 print(f"Test Correct: {correct}/{len(y_pred)}")
                 print(f"{'='*60}\n")
@@ -542,6 +506,162 @@ class NeuralNetworkVisualizer(ctk.CTk):
         classes = self.data_handler.classes
         colors = [self.data_handler.get_color(i) for i in range(len(classes))]
         self.control_panel.update_class_radios(classes, colors)
+    
+    def _run_training_autoencoder(self, X_train, y_train, epochs, batch_size, stopping_criteria, min_error):
+        """
+        Two-stage training for Autoencoder-based MLP:
+        Stage 1: Train autoencoder for feature extraction
+        Stage 2: Train MLP classifier with frozen/trainable encoder
+        """
+        # Get autoencoder configuration
+        encoder_dims = self.control_panel.inputs.get_encoder_architecture()
+        ae_epochs = self.control_panel.inputs.get_ae_epochs()
+        freeze_encoder = self.control_panel.inputs.get_freeze_encoder()
+        recon_samples = self.control_panel.inputs.get_recon_samples()
+        
+        # Get MLP configuration
+        learning_rate = self.control_panel.inputs.get_learning_rate()
+        use_momentum, momentum_factor = self.control_panel.inputs.get_momentum_config()
+        
+        # Encoder activations (all ReLU for encoder)
+        num_encoder_layers = len(encoder_dims) - 1
+        encoder_activations = ['relu'] * (num_encoder_layers - 1) + ['relu']  # Last encoder layer also ReLU
+        
+        # Decoder activations (symmetric, but last layer is sigmoid for pixel values 0-1)
+        decoder_activations = ['relu'] * (num_encoder_layers - 1) + ['sigmoid']
+        
+        # Full autoencoder activations (encoder + decoder)
+        ae_activations = encoder_activations + decoder_activations
+        
+        self.control_panel.set_status("Stage 1/2: Training Autoencoder for feature extraction...")
+        
+        # Stage 1: Train Autoencoder
+        autoencoder = Autoencoder(
+            encoder_dims=encoder_dims,
+            activation_funcs=ae_activations,
+            learning_rate=learning_rate,
+            use_momentum=use_momentum,
+            momentum_factor=momentum_factor,
+        )
+        
+        # Train autoencoder on unlabeled data (just X, ignore y)
+        ae_fit_generator = autoencoder.fit(X_train, epochs=ae_epochs, batch_size=batch_size)
+        
+        # Training loop for autoencoder
+        for epoch, loss, trained_ae in ae_fit_generator:
+            # No validation loss during training (removed for performance)
+            val_loss = None
+            
+            # Update status
+            self.control_panel.set_status(f"Stage 1/2: AE Epoch {epoch}/{ae_epochs} - Recon Loss: {loss:.6f}")
+            
+            self.visualization_frame.update_loss_plot(epoch, loss, val_loss)
+            
+            # Update reconstruction visualization every 5 epochs or last epoch
+            if epoch % 5 == 0 or epoch == ae_epochs:
+                # Sample some images for reconstruction
+                sample_indices = list(range(min(recon_samples, len(X_train))))
+                X_sample = [X_train[i] for i in sample_indices]
+                
+                # Reconstruct
+                X_reconstructed = trained_ae.reconstruct(X_sample)
+                
+                # Compute MSE per sample
+                mse_per_sample = []
+                for i in range(len(X_sample)):
+                    mse = sum((X_sample[i][j] - X_reconstructed[i][j])**2 for j in range(len(X_sample[i]))) / len(X_sample[i])
+                    mse_per_sample.append(mse)
+                
+                # Update visualization
+                self.visualization_frame.update_reconstruction(X_sample, X_reconstructed, mse_per_sample)
+            
+            # Update idletasks for UI responsiveness (removed self.update() - too heavy)
+            self.update_idletasks()
+        
+        # Store trained autoencoder
+        self.trained_autoencoder = autoencoder
+        
+        # Extract latent features for visualization
+        latent_sample_size = min(500, len(X_train))  # Use subset for speed
+        X_latent_vis = X_train[:latent_sample_size]
+        y_latent_vis = y_train[:latent_sample_size]
+        latent_features = autoencoder.encode(X_latent_vis)
+        self.visualization_frame.update_latent_space(latent_features, y_latent_vis)
+        
+        self.control_panel.set_status(f"Stage 1/2 Complete! Final Reconstruction Loss: {loss:.6f}")
+        
+        # Clear loss history for stage 2
+        self.visualization_frame.clear_loss_history()
+        
+        # Small delay before stage 2
+        self.after(500, lambda: self._run_stage2_classifier(
+            autoencoder, X_train, y_train, epochs, batch_size, 
+            freeze_encoder, stopping_criteria, min_error
+        ))
+    
+    def _run_stage2_classifier(self, autoencoder, X_train, y_train, epochs, batch_size, 
+                                freeze_encoder, stopping_criteria, min_error):
+        """
+        Stage 2: Train MLP classifier with pre-trained encoder.
+        """
+        encoder_dims = self.control_panel.inputs.get_encoder_architecture()
+        latent_dim = encoder_dims[-1]
+        
+        # Get MLP architecture from control panel
+        mlp_architecture = self.control_panel.inputs.get_architecture()
+        mlp_architecture[0] = latent_dim  # Input is latent features
+        mlp_architecture[-1] = 10  # Output is 10 classes (MNIST)
+        
+        # Update UI to show current architecture
+        arch_str = ','.join(map(str, mlp_architecture))
+        self.control_panel.architecture_entry.delete(0, 'end')
+        self.control_panel.architecture_entry.insert(0, arch_str)
+        
+        # Get activation functions
+        activation_funcs_raw = self.control_panel.get_activation_functions()
+        hidden_activation = activation_funcs_raw[0]
+        output_activation = activation_funcs_raw[1]
+        
+        # Build MLP activation functions
+        num_mlp_layers = len(mlp_architecture) - 1
+        mlp_activations = [hidden_activation] * (num_mlp_layers - 1) + [output_activation]
+        
+        # Encoder activations
+        num_encoder_layers = len(encoder_dims) - 1
+        encoder_activations = ['relu'] * num_encoder_layers
+        
+        # Get other hyperparameters
+        learning_rate = self.control_panel.inputs.get_learning_rate()
+        l2_lambda = self.control_panel.inputs.get_l2_lambda()
+        use_momentum, momentum_factor = self.control_panel.inputs.get_momentum_config()
+        
+        # Create hybrid model
+        encoder_params = autoencoder.get_encoder_weights()
+        
+        hybrid_model = MLPWithEncoder(
+            encoder_params=encoder_params,
+            encoder_dims=encoder_dims,
+            encoder_activations=encoder_activations,
+            mlp_layer_dims=mlp_architecture,
+            mlp_activations=mlp_activations,
+            learning_rate=learning_rate,
+            l2_lambda=l2_lambda,
+            freeze_encoder=freeze_encoder,
+            use_momentum=use_momentum,
+            momentum_factor=momentum_factor,
+        )
+        
+        freeze_status = "Frozen" if freeze_encoder else "Trainable"
+        self.control_panel.set_status(f"Stage 2/2: Training MLP Classifier (Encoder: {freeze_status})...")
+        
+        # Store for training loop
+        self.current_model = hybrid_model
+        self.stopping_criteria = stopping_criteria
+        self.min_error = min_error
+        
+        # Start training classifier
+        fit_generator = hybrid_model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size)
+        self._train_next_epoch(fit_generator, X_train, y_train, 'AutoencoderMLP')
 
 
 def main():

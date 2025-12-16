@@ -1,85 +1,7 @@
 import random
 import math
 
-
-class MatrixOperations:
-    
-    @staticmethod
-    def multiply(A, B):
-        """Matrix multiplication: C = A @ B"""
-        rows_A = len(A)
-        cols_A = len(A[0]) if rows_A > 0 else 0
-        rows_B = len(B)
-        cols_B = len(B[0]) if rows_B > 0 else 0
-        
-        result = [[0.0 for _ in range(cols_B)] for _ in range(rows_A)]
-        
-        for i in range(rows_A):
-            for j in range(cols_B):
-                for k in range(cols_A):
-                    result[i][j] += A[i][k] * B[k][j]
-        
-        return result
-    
-    @staticmethod
-    def add(A, B):
-        """Matrix addition with broadcasting support"""
-        rows = len(A)
-        cols = len(A[0]) if rows > 0 else 0
-        
-        result = [[0.0 for _ in range(cols)] for _ in range(rows)]
-        
-        if len(B) == 1:  # Broadcasting: B is 1xN (bias vector)
-            for i in range(rows):
-                for j in range(cols):
-                    result[i][j] = A[i][j] + B[0][j]
-        else:  # Normal element-wise addition
-            for i in range(rows):
-                for j in range(cols):
-                    result[i][j] = A[i][j] + B[i][j]
-        
-        return result
-    
-    @staticmethod
-    def subtract(A, B):
-        """Matrix subtraction: C = A - B"""
-        rows = len(A)
-        cols = len(A[0]) if rows > 0 else 0
-        
-        result = [[0.0 for _ in range(cols)] for _ in range(rows)]
-        
-        for i in range(rows):
-            for j in range(cols):
-                result[i][j] = A[i][j] - B[i][j]
-        
-        return result
-    
-    @staticmethod
-    def transpose(A):
-        """Matrix transpose: A^T"""
-        if not A or not A[0]:
-            return [[]]
-        rows = len(A)
-        cols = len(A[0])
-        result = [[0.0 for _ in range(rows)] for _ in range(cols)]
-        for i in range(rows):
-            for j in range(cols):
-                result[j][i] = A[i][j]
-        return result
-    
-    @staticmethod
-    def scalar_multiply(A, scalar):
-        """Multiply matrix by scalar: C = scalar * A"""
-        rows = len(A)
-        cols = len(A[0]) if rows > 0 else 0
-        
-        result = [[0.0 for _ in range(cols)] for _ in range(rows)]
-        
-        for i in range(rows):
-            for j in range(cols):
-                result[i][j] = A[i][j] * scalar
-        
-        return result
+from utils import MatrixOperations
 
 
 class Perceptron:
@@ -228,58 +150,6 @@ class Perceptron:
             avg_error = total_error / (n_samples * self.n_classes)
             yield epoch + 1, avg_error, self
 
-#region - Compute Loss On
-'''
-    def compute_loss_on(self, X, y):
-        """Compute average absolute error (MAE) on arbitrary dataset (X, y).
-
-        Uses the same target encoding and error definition as in fit().
-        """
-        n_samples = len(X)
-        if n_samples == 0:
-            return 0.0
-
-        # Prepare targets like in fit()
-        if self.task == 'regression':
-            targets = []
-            for val in y:
-                if isinstance(val, (list, tuple)):
-                    targets.append(val)
-                else:
-                    targets.append([float(val)])
-        else:
-            targets = [[0.0 for _ in range(self.n_classes)] for _ in range(n_samples)]
-            for i in range(n_samples):
-                targets[i][int(y[i])] = 1.0
-
-        total_error = 0.0
-        for i in range(n_samples):
-            xi = [X[i]]
-            target_i = [targets[i]]
-
-            z = self.matrix_ops.add(self.matrix_ops.multiply(xi, self.weights), self.bias)
-
-            if self.task == 'regression':
-                output = z
-            else:
-                output = [[0.0 for _ in range(self.n_classes)]]
-                max_idx = 0
-                max_val = z[0][0]
-                for j in range(1, len(z[0])):
-                    if z[0][j] > max_val:
-                        max_val = z[0][j]
-                        max_idx = j
-                output[0][max_idx] = 1.0
-
-            for j in range(self.n_classes):
-                err = target_i[0][j] - output[0][j]
-                total_error += abs(err)
-
-        avg_error = total_error / (n_samples * self.n_classes)
-        return avg_error
-'''
-#regionend
-
 class DeltaRule:
     """
     Delta Rule/ADALINE (Widrow-Hoff, 1960).
@@ -406,39 +276,3 @@ class DeltaRule:
             
             # Return MSE loss
             yield epoch + 1, loss, self
-
-#region - Compute Loss On
-'''
-    def compute_loss_on(self, X, y):
-        """Compute MSE on arbitrary dataset (X, y) using current parameters."""
-        n_samples = len(X)
-        if n_samples == 0:
-            return 0.0
-
-        # Prepare targets (same as in fit)
-        if self.task == 'regression':
-            targets = []
-            for val in y:
-                if isinstance(val, (list, tuple)):
-                    targets.append(val)
-                else:
-                    targets.append([float(val)])
-        else:
-            targets = [[0.0 for _ in range(self.n_classes)] for _ in range(n_samples)]
-            for i in range(n_samples):
-                targets[i][int(y[i])] = 1.0
-
-        # Forward pass
-        z = self.matrix_ops.add(self.matrix_ops.multiply(X, self.weights), self.bias)
-        a = self._activation(z)
-
-        # Error and MSE (same formula as in fit)
-        error = self.matrix_ops.subtract(targets, a)
-        loss = 0.0
-        for i in range(len(error)):
-            for j in range(len(error[0])):
-                loss += error[i][j] ** 2
-        loss /= (len(error) * len(error[0]))
-        return loss
-'''
-#regionend

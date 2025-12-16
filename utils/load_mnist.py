@@ -75,9 +75,8 @@ def load_mnist_dataset(
     limit_test: int | None = None,
     per_class_train: int | None = None,
     per_class_test: int | None = None,
-    validation_split: float = 0.1,
-) -> Tuple[Tuple[List[List[float]], List[int], List[List[float]], List[int]], Tuple[List[List[float]], List[int]]]:
-    """Load MNIST train, validation, and test sets from dataset/MNIST.
+) -> Tuple[Tuple[List[List[float]], List[int]], Tuple[List[List[float]], List[int]]]:
+    """Load MNIST train and test sets from dataset/MNIST.
 
     Parameters
     ----------
@@ -89,12 +88,10 @@ def load_mnist_dataset(
         If provided, take at most this many samples per digit (0-9) for training.
     per_class_test : Optional[int]
         If provided, take at most this many samples per digit (0-9) for test.
-    validation_split : float, default=0.1
-        Fraction of the training data to use for validation.
 
     Returns
     -------
-    (X_train, y_train, X_val, y_val), (X_test, y_test)
+    (X_train, y_train), (X_test, y_test)
         X_* are lists of flattened images (length 784),
         y_* are integer labels 0-9.
     """
@@ -125,17 +122,6 @@ def load_mnist_dataset(
     elif limit_train is not None:
         X_train = X_train[:limit_train]
         y_train = y_train[:limit_train]
-    
-    # Split training data into training and validation sets
-    X_train_final, X_val, y_train_final, y_val = [], [], [], []
-    if 0 < validation_split < 1:
-        from sklearn.model_selection import train_test_split
-        X_train_final, X_val, y_train_final, y_val = train_test_split(
-            X_train, y_train, test_size=validation_split, random_state=42, stratify=y_train
-        )
-    else:
-        X_train_final, y_train_final = X_train, y_train
-        X_val, y_val = [], []
 
     if per_class_test is not None:
         counts_t = {d: 0 for d in range(10)}
@@ -153,4 +139,4 @@ def load_mnist_dataset(
         X_test = X_test[:limit_test]
         y_test = y_test[:limit_test]
 
-    return (X_train_final, y_train_final, X_val, y_val), (X_test, y_test)
+    return (X_train, y_train), (X_test, y_test)
