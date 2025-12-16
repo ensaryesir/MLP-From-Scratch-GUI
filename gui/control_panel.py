@@ -3,6 +3,7 @@ Control panel UI - right sidebar with hyperparameters.
 """
 
 import customtkinter as ctk
+from config import UI_SAFETY_DEFAULTS
 
 
 class ControlPanelInputs:
@@ -111,6 +112,24 @@ class ControlPanelInputs:
             return int(self.cp.ae_epochs_entry.get())
         except:
             return UI_SAFETY_DEFAULTS['ae_epochs']
+            
+    def get_ae_stopping_config(self):
+        """Returns (criteria, max_epochs, min_error) for AE."""
+        criteria = self.cp.ae_stopping_criteria.get()
+        try:
+            epochs = int(self.cp.ae_epochs_entry.get())
+        except:
+            epochs = UI_SAFETY_DEFAULTS['ae_epochs']
+            
+        try:
+            min_error = float(self.cp.ae_min_error_entry.get())
+        except:
+            min_error = UI_SAFETY_DEFAULTS.get('ae_min_error', 0.001)
+            
+        if criteria == 'epochs':
+            return 'epochs', epochs, 0.0
+        else:
+            return 'error', 10000, min_error
     
     def get_freeze_encoder(self):
         return self.cp.freeze_encoder_var.get()
@@ -125,15 +144,34 @@ class ControlPanelInputs:
 class ControlPanel(ctk.CTkFrame):
     """Right sidebar with all controls and hyperparameter inputs."""
 
-    def __init__(self, master, on_add_class=None, on_remove_class=None, on_clear_data=None, on_start_training=None, on_task_changed_callback=None, on_dataset_changed_callback=None, **kwargs):
-        super().__init__(master, **kwargs)
-
+    def __init__(self, parent, on_add_class=None, 
+                 on_remove_class=None, on_clear_data=None, 
+                 on_start_training=None, on_task_changed_callback=None,
+                 on_dataset_changed_callback=None,
+                 on_generate_xor=None, on_generate_circles=None,
+                 on_generate_moons=None, on_generate_blobs=None,
+                 on_generate_sine=None, on_generate_parabola=None,
+                 on_generate_linear=None, on_generate_abs=None, **kwargs):
+        super().__init__(parent, **kwargs)
+        
+        # callbacks
         self.on_add_class = on_add_class
         self.on_remove_class = on_remove_class
         self.on_clear_data = on_clear_data
         self.on_start_training = on_start_training
         self.on_task_changed_callback = on_task_changed_callback
         self.on_dataset_changed_callback = on_dataset_changed_callback
+
+        self.on_generate_xor = on_generate_xor
+        self.on_generate_circles = on_generate_circles
+        self.on_generate_moons = on_generate_moons
+        self.on_generate_blobs = on_generate_blobs
+        
+        # Regression callbacks
+        self.on_generate_sine = on_generate_sine
+        self.on_generate_parabola = on_generate_parabola
+        self.on_generate_linear = on_generate_linear
+        self.on_generate_abs = on_generate_abs
         
         self.selected_class = ctk.IntVar(value=0)
         self.class_radio_buttons = []
@@ -190,6 +228,51 @@ class ControlPanel(ctk.CTkFrame):
         # radio buttons
         self.class_radio_frame = ctk.CTkFrame(self.class_management_frame)
         self.class_radio_frame.pack(pady=5, fill="x", padx=5)
+
+        # Dataset Presets (Manual Mode Only)
+        # 1. Classification Presets
+        self.preset_classification_frame = ctk.CTkFrame(self.class_management_frame)
+        self.preset_classification_frame.pack(fill="x", padx=5, pady=5)
+        
+        preset_label_cls = ctk.CTkLabel(self.preset_classification_frame, text="⚡ Classification Presets", font=ctk.CTkFont(size=12, weight="bold"))
+        preset_label_cls.pack(pady=2)
+        
+        preset_grid_cls = ctk.CTkFrame(self.preset_classification_frame)
+        preset_grid_cls.pack(fill="x", padx=2, pady=2)
+        
+        self.btn_xor = ctk.CTkButton(preset_grid_cls, text="XOR", width=60, command=self._on_xor_clicked)
+        self.btn_xor.grid(row=0, column=0, padx=2, pady=2)
+        
+        self.btn_circle = ctk.CTkButton(preset_grid_cls, text="Circles", width=60, command=self._on_circles_clicked)
+        self.btn_circle.grid(row=0, column=1, padx=2, pady=2)
+        
+        self.btn_moon = ctk.CTkButton(preset_grid_cls, text="Moons", width=60, command=self._on_moons_clicked)
+        self.btn_moon.grid(row=1, column=0, padx=2, pady=2)
+        
+        self.btn_blob = ctk.CTkButton(preset_grid_cls, text="Blobs", width=60, command=self._on_blobs_clicked)
+        self.btn_blob.grid(row=1, column=1, padx=2, pady=2)
+        
+        # 2. Regression Presets (Initially Hidden by pack_forget, handled in _on_task_changed)
+        self.preset_regression_frame = ctk.CTkFrame(self.class_management_frame)
+        # self.preset_regression_frame.pack(fill="x", padx=5, pady=5)  <-- Hidden by default
+        
+        preset_label_reg = ctk.CTkLabel(self.preset_regression_frame, text="⚡ Regression Presets", font=ctk.CTkFont(size=12, weight="bold"))
+        preset_label_reg.pack(pady=2)
+        
+        preset_grid_reg = ctk.CTkFrame(self.preset_regression_frame)
+        preset_grid_reg.pack(fill="x", padx=2, pady=2)
+        
+        self.btn_sine = ctk.CTkButton(preset_grid_reg, text="Sine", width=60, command=self._on_sine_clicked)
+        self.btn_sine.grid(row=0, column=0, padx=2, pady=2)
+        
+        self.btn_parabola = ctk.CTkButton(preset_grid_reg, text="Parabola", width=60, command=self._on_parabola_clicked)
+        self.btn_parabola.grid(row=0, column=1, padx=2, pady=2)
+        
+        self.btn_linear = ctk.CTkButton(preset_grid_reg, text="Linear", width=60, command=self._on_linear_clicked)
+        self.btn_linear.grid(row=1, column=0, padx=2, pady=2)
+        
+        self.btn_abs = ctk.CTkButton(preset_grid_reg, text="Abs(x)", width=60, command=self._on_abs_clicked)
+        self.btn_abs.grid(row=1, column=1, padx=2, pady=2)
         
         # Model Selection
         model_frame = ctk.CTkFrame(self)
@@ -271,7 +354,7 @@ class ControlPanel(ctk.CTkFrame):
         error_radio.pack(side="left", padx=5)
         
         # Epochs
-        self.epochs_frame = ctk.CTkFrame(hyper_frame)
+        self.epochs_frame = ctk.CTkFrame(stopping_frame)
         self.epochs_frame.pack(fill="x", padx=10, pady=2)
         
         epochs_label = ctk.CTkLabel(self.epochs_frame, text="Max Epochs:")
@@ -282,7 +365,7 @@ class ControlPanel(ctk.CTkFrame):
         self.epochs_entry.insert(0, "100")
         
         # Min Error
-        self.min_error_frame = ctk.CTkFrame(hyper_frame)
+        self.min_error_frame = ctk.CTkFrame(stopping_frame)
         self.min_error_frame.pack(fill="x", padx=10, pady=2)
         
         min_error_label = ctk.CTkLabel(self.min_error_frame, text="Min Error:")
@@ -350,16 +433,44 @@ class ControlPanel(ctk.CTkFrame):
         self.encoder_architecture_entry.pack(side="right", padx=5)
         self.encoder_architecture_entry.insert(0, "784,128,32")
         
-        # Autoencoder Epochs
-        ae_epochs_frame = ctk.CTkFrame(self.autoencoder_frame)
-        ae_epochs_frame.pack(fill="x", padx=10, pady=2)
+        # Autoencoder Stopping Criteria
+        ae_stop_frame = ctk.CTkFrame(self.autoencoder_frame)
+        ae_stop_frame.pack(fill="x", padx=10, pady=2)
         
-        ae_epochs_label = ctk.CTkLabel(ae_epochs_frame, text="AE Pre-train Epochs:")
+        ae_stop_label = ctk.CTkLabel(ae_stop_frame, text="Stop AE Train By:")
+        ae_stop_label.pack(side="left", padx=5)
+        
+        self.ae_stopping_criteria = ctk.StringVar(value="epochs")
+        self.ae_stopping_switch = ctk.CTkSegmentedButton(
+            ae_stop_frame, 
+            values=["epochs", "error"], 
+            variable=self.ae_stopping_criteria, 
+            command=self._on_ae_stopping_changed,
+            width=100
+        )
+        self.ae_stopping_switch.pack(side="right", padx=5)
+
+        # AE Epochs Input
+        self.ae_epochs_frame = ctk.CTkFrame(self.autoencoder_frame)
+        self.ae_epochs_frame.pack(fill="x", padx=10, pady=2)
+        
+        ae_epochs_label = ctk.CTkLabel(self.ae_epochs_frame, text="AE Pre-train Epochs:")
         ae_epochs_label.pack(side="left", padx=5)
         
-        self.ae_epochs_entry = ctk.CTkEntry(ae_epochs_frame, width=100)
+        self.ae_epochs_entry = ctk.CTkEntry(self.ae_epochs_frame, width=100)
         self.ae_epochs_entry.pack(side="right", padx=5)
         self.ae_epochs_entry.insert(0, "50")
+        
+        # AE Min Error Input (Initially hidden)
+        self.ae_min_error_frame = ctk.CTkFrame(self.autoencoder_frame)
+        # self.ae_min_error_frame.pack(fill="x", padx=10, pady=2) # Hidden by default
+        
+        ae_error_label = ctk.CTkLabel(self.ae_min_error_frame, text="AE Min Error:")
+        ae_error_label.pack(side="left", padx=5)
+        
+        self.ae_min_error_entry = ctk.CTkEntry(self.ae_min_error_frame, width=100)
+        self.ae_min_error_entry.pack(side="right", padx=5)
+        self.ae_min_error_entry.insert(0, "0.001")
         
         # Freeze Encoder Checkbox
         freeze_frame = ctk.CTkFrame(self.autoencoder_frame)
@@ -428,13 +539,44 @@ class ControlPanel(ctk.CTkFrame):
         if self.on_start_training:
             self.on_start_training()
 
+    def _on_xor_clicked(self):
+        if self.on_generate_xor: self.on_generate_xor()
+    
+    def _on_circles_clicked(self):
+        if self.on_generate_circles: self.on_generate_circles()
+        
+    def _on_moons_clicked(self):
+        if self.on_generate_moons: self.on_generate_moons()
+
+    def _on_blobs_clicked(self):
+        if self.on_generate_blobs: self.on_generate_blobs()
+
+    def _on_sine_clicked(self):
+        if self.on_generate_sine: self.on_generate_sine()
+
+    def _on_parabola_clicked(self):
+        if self.on_generate_parabola: self.on_generate_parabola()
+        
+    def _on_linear_clicked(self):
+        if self.on_generate_linear: self.on_generate_linear()
+        
+    def _on_abs_clicked(self):
+        if self.on_generate_abs: self.on_generate_abs()
+
     def _on_dataset_changed(self, choice):
+        self._update_preset_visibility()
+        self._apply_default_hyperparams()
         if self.on_dataset_changed_callback:
             self.on_dataset_changed_callback(choice)
     
     def _on_task_changed(self, choice):
         """Handle task switching (Classification vs Regression)."""
         is_regression = (choice == "Regression")
+        
+        # Update visibility (handles toggling based on model/dataset too)
+        self._update_preset_visibility()
+        
+        # If regression...
         
         # Regression: Disable class management, force single output
         if is_regression:
@@ -507,6 +649,15 @@ class ControlPanel(ctk.CTkFrame):
             self.epochs_frame.pack_forget()
             self.min_error_frame.pack(fill="x", padx=10, pady=2)
 
+    def _on_ae_stopping_changed(self, choice):
+        """Show/hide AE stopping criteria inputs."""
+        if choice == "epochs":
+            self.ae_epochs_frame.pack(fill="x", padx=10, pady=2, after=self.ae_stopping_switch.master)
+            self.ae_min_error_frame.pack_forget()
+        else:
+            self.ae_epochs_frame.pack_forget()
+            self.ae_min_error_frame.pack(fill="x", padx=10, pady=2, after=self.ae_stopping_switch.master)
+
     def _on_model_changed(self, choice):
         """Show/hide model-specific parameters based on selection."""
         if "Autoencoder-Based MLP" in choice:
@@ -540,10 +691,36 @@ class ControlPanel(ctk.CTkFrame):
         # Apply presets whenever model changes
         self._apply_default_hyperparams()
         
+        # Update preset visibility based on model choice
+        self._update_preset_visibility()
+
         # If in MNIST mode and model changed, update tabs
         if hasattr(self, 'on_model_changed_mnist_callback'):
             if self.on_model_changed_mnist_callback:
                 self.on_model_changed_mnist_callback()
+
+    def _update_preset_visibility(self):
+        """Show presets only for MLP model in Manual mode."""
+        model = self.get_model_type()
+        dataset = self.get_dataset_mode()
+        task = self.get_task_type()
+        
+        # Determine if we should show any presets
+        # User requested: "sadece mimariyi manuel modda mlp secince gozuksun"
+        # Translation: "Only show when MLP is selected in Manual mode"
+        should_show = (model == 'MLP') and (dataset == 'manual')
+        
+        if not should_show:
+            self.preset_classification_frame.pack_forget()
+            self.preset_regression_frame.pack_forget()
+        else:
+            # If we should show, decide which one based on task
+            if task == 'regression':
+                self.preset_classification_frame.pack_forget()
+                self.preset_regression_frame.pack(fill="x", padx=5, pady=5, after=self.class_radio_frame)
+            else:
+                self.preset_regression_frame.pack_forget()
+                self.preset_classification_frame.pack(fill="x", padx=5, pady=5, after=self.class_radio_frame)
 
     def _apply_default_hyperparams(self):
         """Apply model- and task-specific default hyperparameters from config file."""
@@ -599,6 +776,13 @@ class ControlPanel(ctk.CTkFrame):
                 set_entry(self.encoder_architecture_entry, defaults['encoder_architecture'])
             if 'ae_epochs' in defaults and hasattr(self, 'ae_epochs_entry'):
                 set_entry(self.ae_epochs_entry, defaults['ae_epochs'])
+            
+            if 'ae_stopping_criteria' in defaults and hasattr(self, 'ae_stopping_criteria'):
+                self.ae_stopping_criteria.set(defaults['ae_stopping_criteria'])
+                self._on_ae_stopping_changed(defaults['ae_stopping_criteria'])
+
+            if 'ae_min_error' in defaults and hasattr(self, 'ae_min_error_entry'):
+                set_entry(self.ae_min_error_entry, defaults['ae_min_error'])
             if 'freeze_encoder' in defaults and hasattr(self, 'freeze_encoder_var'):
                 self.freeze_encoder_var.set(defaults['freeze_encoder'])
             if 'recon_samples' in defaults and hasattr(self, 'recon_samples_entry'):
@@ -612,20 +796,34 @@ class ControlPanel(ctk.CTkFrame):
         self.class_radio_buttons = []
         
         # create new
-        for i, (class_name, color) in enumerate(zip(classes, colors)):
+        if len(classes) > 0:
+            for i, (class_name, color) in enumerate(zip(classes, colors)):
+                radio = ctk.CTkRadioButton(
+                    self.class_radio_frame,
+                    text=f"  {class_name}",
+                    variable=self.selected_class,
+                    value=i,
+                    fg_color=color,
+                    border_color=color
+                )
+                radio.pack(anchor="w", padx=10, pady=2)
+                self.class_radio_buttons.append(radio)
+            self.selected_class.set(0)
+        
+        elif self.get_task_type() == 'regression':
+            # Create single radio for regression even if classes list is empty
+            from config import COLOR_PALETTE
+            color = COLOR_PALETTE[0] if len(colors) > 0 else "#1F6AA5"
             radio = ctk.CTkRadioButton(
                 self.class_radio_frame,
-                text=f"  {class_name}",
+                text="  Continuous Output",
                 variable=self.selected_class,
-                value=i,
+                value=0,
                 fg_color=color,
                 border_color=color
             )
             radio.pack(anchor="w", padx=10, pady=2)
             self.class_radio_buttons.append(radio)
-        
-        # select first
-        if len(classes) > 0:
             self.selected_class.set(0)
     
     def get_selected_class(self):

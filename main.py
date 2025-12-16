@@ -68,6 +68,14 @@ class NeuralNetworkVisualizer(ctk.CTk):
             on_start_training=self._on_start_training,
             on_task_changed_callback=self._on_task_changed,
             on_dataset_changed_callback=self._on_dataset_changed,
+            on_generate_xor=self._on_generate_xor,
+            on_generate_circles=self._on_generate_circles,
+            on_generate_moons=self._on_generate_moons,
+            on_generate_blobs=self._on_generate_blobs,
+            on_generate_sine=self._on_generate_sine,
+            on_generate_parabola=self._on_generate_parabola,
+            on_generate_linear=self._on_generate_linear,
+            on_generate_abs=self._on_generate_abs,
         )
         self.control_panel.grid(row=0, column=1, sticky="nsew", padx=(5, 10), pady=10)
         
@@ -158,6 +166,61 @@ class NeuralNetworkVisualizer(ctk.CTk):
             self.visualization_frame.current_dataset_mode = None  # Force refresh
             self.visualization_frame.configure_for_dataset_mode('mnist', model_type)
     
+        if self.control_panel.get_task_type() == 'regression':
+             # For regression, we might want to plot the points differently or just as single class
+             pass
+        self.visualization_frame.update_train_view(self.data_handler)
+
+    def _on_generate_xor(self):
+        if self.is_training: return
+        self.data_handler.generate_xor()
+        self._on_preset_generated()
+
+    def _on_generate_circles(self):
+        if self.is_training: return
+        self.data_handler.generate_circles()
+        self._on_preset_generated()
+        
+    def _on_generate_moons(self):
+        if self.is_training: return
+        self.data_handler.generate_moons()
+        self._on_preset_generated()
+        
+    def _on_generate_blobs(self):
+        if self.is_training: return
+        self.data_handler.generate_blobs()
+        self._on_preset_generated()
+
+    # Regression Presets
+    def _on_generate_sine(self):
+        if self.is_training: return
+        self.data_handler.generate_sine()
+        self._on_preset_generated()
+
+    def _on_generate_parabola(self):
+        if self.is_training: return
+        self.data_handler.generate_parabola()
+        self._on_preset_generated()
+        
+    def _on_generate_linear(self):
+        if self.is_training: return
+        self.data_handler.generate_linear()
+        self._on_preset_generated()
+        
+    def _on_generate_abs(self):
+        if self.is_training: return
+        self.data_handler.generate_abs()
+        self._on_preset_generated()
+        self._on_preset_generated()
+
+    def _on_preset_generated(self):
+        """Common update logic after preset generation."""
+        self.control_panel.update_class_radios(
+            self.data_handler.classes, 
+            self.data_handler.colors
+        )
+        self.visualization_frame.update_train_view(self.data_handler)
+
     def _on_start_training(self):
         """Initialize and start training process."""
         if self.is_training:
@@ -515,7 +578,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
         """
         # Get autoencoder configuration
         encoder_dims = self.control_panel.inputs.get_encoder_architecture()
-        ae_epochs = self.control_panel.inputs.get_ae_epochs()
+        ae_stop_mode, ae_epochs, ae_min_error_val = self.control_panel.inputs.get_ae_stopping_config()
         freeze_encoder = self.control_panel.inputs.get_freeze_encoder()
         recon_samples = self.control_panel.inputs.get_recon_samples()
         
@@ -575,6 +638,13 @@ class NeuralNetworkVisualizer(ctk.CTk):
                 # Update visualization
                 self.visualization_frame.update_reconstruction(X_sample, X_reconstructed, mse_per_sample)
             
+            # Check stopping criteria
+            if ae_stop_mode == 'error' and loss <= ae_min_error_val:
+                self.control_panel.set_status(f"Stage 1/2: AE Converged at epoch {epoch} (Loss {loss:.6f} <= {ae_min_error_val})")
+                self.visualization_frame.update_loss_plot(epoch, loss, val_loss)
+                # Force last visualization update if needed, but break is sufficient
+                break
+
             # Update idletasks for UI responsiveness (removed self.update() - too heavy)
             self.update_idletasks()
         

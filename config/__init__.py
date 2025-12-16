@@ -1,5 +1,6 @@
 from .default_hyperparams import (
     get_defaults,
+    UI_SAFETY_DEFAULTS,
     PERCEPTRON_DEFAULTS,
     DELTA_RULE_DEFAULTS,
     MLP_DEFAULTS,
@@ -13,6 +14,7 @@ from .ui_defaults import (
 
 __all__ = [
     'get_defaults',
+    'UI_SAFETY_DEFAULTS',
     'PERCEPTRON_DEFAULTS',
     'DELTA_RULE_DEFAULTS',
     'MLP_DEFAULTS',

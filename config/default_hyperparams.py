@@ -12,6 +12,25 @@ Structure:
 """
 
 # ============================================================================
+# SAFETY DEFAULTS (Fallback values if UI input is invalid)
+# ============================================================================
+UI_SAFETY_DEFAULTS = {
+    'learning_rate': 0.001,
+    'epochs': 100,
+    'min_error': 0.001,
+    'batch_size': 32,
+    'l2_lambda': 0.0,
+    'momentum_factor': 0.9,
+    'test_split': 20.0,
+    'architecture': [784, 128, 10],  # Generic fallback
+    'encoder_architecture': [784, 128, 32],
+    'ae_epochs': 50,
+    'recon_samples': 10,
+    'ae_stopping_criteria': 'epochs',
+    'ae_min_error': 0.001
+}
+
+# ============================================================================
 # PERCEPTRON DEFAULTS
 # ============================================================================
 
@@ -112,6 +131,8 @@ AUTOENCODER_MLP_DEFAULTS = {
         'min_error': 0.1,
         # Autoencoder-specific parameters
         'ae_epochs': 50,  # Autoencoder pre-training epochs
+        'ae_stopping_criteria': 'epochs',
+        'ae_min_error': 0.001,
         'freeze_encoder': True,  # Freeze encoder weights during classifier training
         'recon_samples': 10,  # Number of reconstruction samples to visualize
     },
@@ -130,6 +151,8 @@ AUTOENCODER_MLP_DEFAULTS = {
         'min_error': 0.002,
         # Autoencoder-specific (uses same defaults as MNIST)
         'ae_epochs': 50,
+        'ae_stopping_criteria': 'epochs',
+        'ae_min_error': 0.001,
         'freeze_encoder': True,
         'recon_samples': 10,
     }
