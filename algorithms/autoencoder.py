@@ -311,25 +311,6 @@ class Autoencoder:
             avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
             yield epoch + 1, avg_loss, self
     
-    def compute_loss_on(self, X):
-        """
-        Compute reconstruction loss on arbitrary dataset.
-        
-        Args:
-            X: Input data (n_samples, n_features)
-        
-        Returns:
-            Reconstruction loss (MSE)
-        """
-        if len(X) == 0:
-            return 0.0
-        
-        # Forward pass to reconstruct
-        X_reconstructed, _ = self._forward_propagation(X)
-        
-        # Compute reconstruction loss
-        return self._compute_reconstruction_loss(X_reconstructed, X)
-    
     def get_latent_dim(self):
         """Return the size of the latent representation."""
         return self.encoder_dims[-1]

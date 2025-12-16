@@ -373,17 +373,3 @@ class MLPWithEncoder:
             # Average loss
             avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
             yield epoch + 1, avg_loss, self
-    
-    def compute_loss_on(self, X, y):
-        """Compute loss on arbitrary dataset."""
-        n_samples = len(X)
-        if n_samples == 0:
-            return 0.0
-        
-        n_classes = self.mlp_layer_dims[-1]
-        Y = [[0.0 for _ in range(n_classes)] for _ in range(n_samples)]
-        for i in range(n_samples):
-            Y[i][int(y[i])] = 1.0
-        
-        A_final, _ = self._forward_propagation(X)
-        return self._compute_loss(A_final, Y)

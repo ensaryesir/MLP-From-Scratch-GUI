@@ -85,7 +85,6 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.control_panel.on_model_changed_mnist_callback = self._on_model_changed_mnist
     
     # Event Handlers
-    
     def _on_point_added(self, x, y):
         """Add data point on mouse click."""
         # Prevent adding points during training
@@ -173,6 +172,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
              pass
         self.visualization_frame.update_train_view(self.data_handler)
 
+    # Classification Presets
     def _on_generate_xor(self):
         if self.is_training: return
         self.data_handler.generate_xor()
@@ -463,9 +463,8 @@ class NeuralNetworkVisualizer(ctk.CTk):
             epoch, loss, model = next(self.fit_generator)
             self.current_model = model
             
-            # No validation loss during training (removed for performance)
-            val_loss = None
-
+            self.current_model = model
+            
             # Check stopping criteria (only using training loss)
             should_stop = False
             stop_reason = ""
@@ -481,7 +480,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
             else:
                 self.control_panel.set_status(f"Training stopped! {stop_reason}")
 
-            self.visualization_frame.update_loss_plot(epoch, loss, val_loss)
+            self.visualization_frame.update_loss_plot(epoch, loss)
             
             # update decision boundary every 5 epochs (manual 2D data only)
             if getattr(self, 'dataset_mode', 'manual') == 'manual':
@@ -664,13 +663,13 @@ class NeuralNetworkVisualizer(ctk.CTk):
             ctx = self.stage2_context
             if ctx['ae_stop_mode'] == 'error' and loss <= ctx['ae_min_error_val']:
                 self.control_panel.set_status(f"AE Converged (Loss {loss:.4f})")
-                self.visualization_frame.update_loss_plot(epoch, loss, None)
+                self.visualization_frame.update_loss_plot(epoch, loss)
                 # Proceed to Stage 2 immediately
                 self._start_stage2_mlp(trained_ae)
                 return
 
             self.control_panel.set_status(f"Stage 1/2: AE Epoch {epoch} - Recon Loss: {loss:.6f}")
-            self.visualization_frame.update_loss_plot(epoch, loss, None)
+            self.visualization_frame.update_loss_plot(epoch, loss)
             
             # Visualize reconstructions periodically
             if epoch % 5 == 0 or epoch == ctx['epochs']: # Assuming ctx['epochs'] is ae_epochs

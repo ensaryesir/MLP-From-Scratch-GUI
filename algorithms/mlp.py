@@ -282,30 +282,3 @@ class MLP:
             # Average loss over all batches
             avg_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
             yield epoch + 1, avg_loss, self
-
-    def compute_loss_on(self, X, y):
-        """Compute loss on arbitrary dataset (X, y) using current parameters.
-
-        Mirrors the loss definition used during training for both
-        classification (cross-entropy) and regression (MSE), including
-        L2 regularization.
-        """
-        n_samples = len(X)
-        if n_samples == 0:
-            return 0.0
-
-        if self.task == 'regression':
-            Y = []
-            for val in y:
-                if isinstance(val, (list, tuple)):
-                    Y.append(val)
-                else:
-                    Y.append([float(val)])
-        else:
-            n_classes = self.layer_dims[-1]
-            Y = [[0.0 for _ in range(n_classes)] for _ in range(n_samples)]
-            for i in range(n_samples):
-                Y[i][int(y[i])] = 1.0
-
-        A_final, _ = self._forward_propagation(X)
-        return self._compute_loss(A_final, Y)

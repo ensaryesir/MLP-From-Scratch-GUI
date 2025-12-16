@@ -380,14 +380,14 @@ class VisualizationFrame(ctk.CTkFrame):
         
         canvas.draw()
 
-    def update_loss_plot(self, epoch, train_loss, val_loss=None):
-        """Add new train/validation loss values and refresh the loss curve."""
-        self.loss_history.append((epoch, train_loss, val_loss))
+    def update_loss_plot(self, epoch, train_loss):
+        """Add new train loss values and refresh the loss curve."""
+        self.loss_history.append((epoch, train_loss))
         self.loss_ax.clear()
 
         if len(self.loss_history) > 0:
-            epochs = [e for e, _, _ in self.loss_history]
-            train_losses = [tl for _, tl, _ in self.loss_history]
+            epochs = [e for e, _ in self.loss_history]
+            train_losses = [tl for _, tl in self.loss_history]
 
             # Training loss (blue)
             self.loss_ax.plot(
@@ -400,28 +400,13 @@ class VisualizationFrame(ctk.CTkFrame):
                 label='Training Error',
             )
 
-            # Validation loss (red), if any val_loss is provided
-            if any(vl is not None for _, _, vl in self.loss_history):
-                val_epochs = [e for (e, _, vl) in self.loss_history if vl is not None]
-                val_values = [vl for (_, _, vl) in self.loss_history if vl is not None]
-                if len(val_epochs) > 0:
-                    self.loss_ax.plot(
-                        val_epochs,
-                        val_values,
-                        'r-',
-                        linewidth=2,
-                        marker='s',
-                        markersize=4,
-                        label='Validation Error',
-                    )
-
-            self.loss_ax.set_xlabel('Epoch')
-            self.loss_ax.set_ylabel('Error')
-            self.loss_ax.set_title('Training Error')
             self.loss_ax.grid(True, alpha=0.3)
             handles, _ = self.loss_ax.get_legend_handles_labels()
             if handles:
                 self.loss_ax.legend(loc='upper right')
+            self.loss_ax.set_title("Training Loss")
+            self.loss_ax.set_xlabel("Epoch")
+            self.loss_ax.set_ylabel("Loss")
 
         self.loss_canvas.draw()
 
