@@ -20,15 +20,29 @@ class ControlPanelInputs:
             # Parse comma-separated list
             arch = [int(x.strip()) for x in arch_str.split(',')]
             
-            # Validate output layer for regression
-            if self.cp.task_type.get() == "Regression":
+            # Validate output layer
+            task = self.cp.task_type.get()
+            
+            # Helper to update UI
+            def update_ui(new_arch):
+                self.cp.architecture_entry.delete(0, 'end')
+                self.cp.architecture_entry.insert(0, ','.join(map(str, new_arch)))
+
+            if task == "Regression":
                 # Ensure output dim is 1 for regression (scalar output)
                 if arch[-1] != 1:
                     print(f"Warning: Regression requires output dim 1 (got {arch[-1]}). Auto-fixing.")
                     arch[-1] = 1
-                    # Update UI to reflect fix
-                    self.cp.architecture_entry.delete(0, 'end')
-                    self.cp.architecture_entry.insert(0, ','.join(map(str, arch)))
+                    update_ui(arch)
+            
+            elif task == "Classification" and self.cp.dataset_mode.get() == 'Manual':
+                # Ensure output dim matches number of classes for manual classification
+                num_classes = len(self.cp.class_radio_buttons)
+                if num_classes > 0 and arch[-1] != num_classes:
+                    print(f"Update: Setting output dim to {num_classes} to match classes.")
+                    arch[-1] = num_classes
+                    update_ui(arch)
+
             return arch
         except:
             return UI_SAFETY_DEFAULTS['architecture']
