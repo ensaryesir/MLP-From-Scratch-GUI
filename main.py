@@ -673,7 +673,24 @@ class NeuralNetworkVisualizer(ctk.CTk):
             
             # Visualize reconstructions periodically
             if epoch % 5 == 0 or epoch == ctx['epochs']: # Assuming ctx['epochs'] is ae_epochs
-                self.visualization_frame.visualize_reconstructions(trained_ae, ctx['X_train'], num_samples=ctx['recon_samples'])
+                # Sample some images for reconstruction
+                sample_indices = list(range(min(ctx['recon_samples'], len(ctx['X_train']))))
+                X_sample = [ctx['X_train'][i] for i in sample_indices]
+                
+                # Reconstruct
+                X_reconstructed = trained_ae.reconstruct(X_sample)
+                
+                # Compute MSE per sample
+                mse_per_sample = []
+                for i in range(len(X_sample)):
+                    diff_sq = 0.0
+                    for j in range(len(X_sample[i])):
+                        diff = X_sample[i][j] - X_reconstructed[i][j]
+                        diff_sq += diff * diff
+                    mse_per_sample.append(diff_sq / len(X_sample[i]))
+                
+                # Update visualization
+                self.visualization_frame.update_reconstruction(X_sample, X_reconstructed, mse_per_sample)
                 self.update_idletasks()
             
             # Schedule next epoch
