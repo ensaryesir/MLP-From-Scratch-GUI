@@ -117,24 +117,24 @@ MLP_DEFAULTS = {
 
 AUTOENCODER_MLP_DEFAULTS = {
     'mnist': {
-        # MNIST dataset with autoencoder feature extraction
-        'architecture': '32,64,10',  # MLP classifier part (input is encoder output)
-        'encoder_architecture': '784,128,32',  # Encoder layers
+        # MNIST dataset with autoencoder feature extraction (OPTIMIZED FOR SPEED)
+        'architecture': '64,32,10',  # MLP classifier part (input is encoder output)
+        'encoder_architecture': '784,128,64',  # Encoder layers (OPTIMIZED: smaller, faster)
         'activation_hidden': 'relu',
         'activation_output': 'softmax',
         'learning_rate': 0.1,
-        'batch_size': 32,
+        'batch_size': 64,  # OPTIMIZED: larger batch = fewer iterations
         'l2_lambda': 0.0001,
         'use_momentum': True,
         'momentum_factor': 0.9,
-        'epochs': 100,  # Classifier training epochs
-        'min_error': 0.01,
+        'epochs': 50,  # Classifier training epochs
+        'min_error': 0.02,
         # Autoencoder-specific parameters
-        'ae_epochs': 50,  # Autoencoder pre-training epochs
+        'ae_epochs': 30,  # Autoencoder pre-training epochs
         'ae_stopping_criteria': 'epochs',
-        'ae_min_error': 0.01,
+        'ae_min_error': 0.02,
         'freeze_encoder': True,  # Freeze encoder weights during classifier training
-        'recon_samples': 10,  # Number of reconstruction samples to visualize
+        'recon_samples': 10,  # Show all 10 digit classes (0-9)
     },
     'manual': {
         # Manual mode (rarely used with autoencoder)
