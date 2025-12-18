@@ -98,7 +98,15 @@ class ControlPanelInputs:
             factor = float(self.cp.momentum_entry.get())
         except:
             factor = 0.9
-        return self.cp.use_momentum_var.get(), factor
+        
+        checkbox_value = self.cp.use_momentum_var.get()
+        
+        if checkbox_value:
+            # Momentum ON → use actual factor
+            return True, factor
+        else:
+            # Momentum OFF → set factor to 0 (disables accumulation)
+            return True, 0.0
 
     def get_encoder_architecture(self):
         try:
@@ -772,6 +780,7 @@ class ControlPanel(ctk.CTkFrame):
             if 'l2_lambda' in defaults:
                 set_entry(self.l2_entry, defaults['l2_lambda'])
             if 'use_momentum' in defaults:
+                # Set checkbox value directly from config
                 self.use_momentum_var.set(defaults['use_momentum'])
             if 'momentum_factor' in defaults:
                 set_entry(self.momentum_entry, defaults['momentum_factor'])

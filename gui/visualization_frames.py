@@ -21,7 +21,9 @@ class VisualizationFrame(ctk.CTkFrame):
         super().__init__(master, **kwargs)
 
         self.on_point_added_callback = on_point_added_callback
-        self.loss_history = []
+        self.loss_history = []  # For backward compatibility with regular MLP
+        self.ae_loss_history = []  # Separate history for autoencoder
+        self.mlp_loss_history = []  # Separate history for MLP (when using AutoencoderMLP)
         self.current_task = 'classification'  # Track current task type
         self.click_enabled = True  # Track if clicking is enabled
         self.click_handler_id = None  # Store click event handler ID
@@ -96,6 +98,40 @@ class VisualizationFrame(ctk.CTkFrame):
         self.loss_canvas = FigureCanvasTkAgg(self.loss_fig, tab)
         self.loss_canvas.draw()
         self.loss_canvas.get_tk_widget().pack(fill="both", expand=True)
+    
+    def _setup_ae_loss_tab(self):
+        """Setup autoencoder loss tab for training curve."""
+        tab = self.tabview.tab("📈 Autoencoder Error")
+
+        # create matplotlib figure
+        self.ae_loss_fig = Figure(figsize=(7, 6), dpi=100)
+        self.ae_loss_ax = self.ae_loss_fig.add_subplot(111)
+        self.ae_loss_ax.set_xlabel('Epoch')
+        self.ae_loss_ax.set_ylabel('Error')
+        self.ae_loss_ax.set_title('Autoencoder Training Error')
+        self.ae_loss_ax.grid(True, alpha=0.3)
+
+        # embed in tkinter
+        self.ae_loss_canvas = FigureCanvasTkAgg(self.ae_loss_fig, tab)
+        self.ae_loss_canvas.draw()
+        self.ae_loss_canvas.get_tk_widget().pack(fill="both", expand=True)
+    
+    def _setup_mlp_loss_tab(self):
+        """Setup MLP loss tab for training curve."""
+        tab = self.tabview.tab("📈 MLP Error")
+
+        # create matplotlib figure
+        self.mlp_loss_fig = Figure(figsize=(7, 6), dpi=100)
+        self.mlp_loss_ax = self.mlp_loss_fig.add_subplot(111)
+        self.mlp_loss_ax.set_xlabel('Epoch')
+        self.mlp_loss_ax.set_ylabel('Error')
+        self.mlp_loss_ax.set_title('MLP Training Error')
+        self.mlp_loss_ax.grid(True, alpha=0.3)
+
+        # embed in tkinter
+        self.mlp_loss_canvas = FigureCanvasTkAgg(self.mlp_loss_fig, tab)
+        self.mlp_loss_canvas.draw()
+        self.mlp_loss_canvas.get_tk_widget().pack(fill="both", expand=True)
 
     def _on_train_click(self, event):
         """Handle clicks on training plot to add points."""
@@ -380,45 +416,142 @@ class VisualizationFrame(ctk.CTkFrame):
         
         canvas.draw()
 
-    def update_loss_plot(self, epoch, train_loss):
-        """Add new train loss values and refresh the loss curve."""
-        self.loss_history.append((epoch, train_loss))
-        self.loss_ax.clear()
+    def update_loss_plot(self, epoch, train_loss, model_type='MLP'):
+        """Add new train loss values and refresh the loss curve.
+        
+        Args:
+            epoch: Current epoch number
+            train_loss: Training loss value
+            model_type: 'MLP', 'Autoencoder', or 'AutoencoderMLP' to determine which graph to update
+        """
+        if model_type == 'Autoencoder':
+            # Update autoencoder-specific graph
+            self.ae_loss_history.append((epoch, train_loss))
+            self.ae_loss_ax.clear()
 
-        if len(self.loss_history) > 0:
-            epochs = [e for e, _ in self.loss_history]
-            train_losses = [tl for _, tl in self.loss_history]
+            if len(self.ae_loss_history) > 0:
+                epochs = [e for e, _ in self.ae_loss_history]
+                train_losses = [tl for _, tl in self.ae_loss_history]
 
-            # Training loss (blue)
-            self.loss_ax.plot(
-                epochs,
-                train_losses,
-                'b-',
-                linewidth=2,
-                marker='o',
-                markersize=4,
-                label='Training Error',
-            )
+                # Training loss (blue)
+                self.ae_loss_ax.plot(
+                    epochs,
+                    train_losses,
+                    'b-',
+                    linewidth=2,
+                    marker='o',
+                    markersize=4,
+                    label='Autoencoder Error',
+                )
 
-            self.loss_ax.grid(True, alpha=0.3)
-            handles, _ = self.loss_ax.get_legend_handles_labels()
-            if handles:
-                self.loss_ax.legend(loc='upper right')
-            self.loss_ax.set_title("Training Loss")
-            self.loss_ax.set_xlabel("Epoch")
-            self.loss_ax.set_ylabel("Loss")
+                self.ae_loss_ax.grid(True, alpha=0.3)
+                handles, _ = self.ae_loss_ax.get_legend_handles_labels()
+                if handles:
+                    self.ae_loss_ax.legend(loc='upper right')
+                self.ae_loss_ax.set_title("Autoencoder Training Loss")
+                self.ae_loss_ax.set_xlabel("Epoch")
+                self.ae_loss_ax.set_ylabel("Loss")
 
-        self.loss_canvas.draw()
+            self.ae_loss_canvas.draw()
+            self.ae_loss_canvas.flush_events()
+        
+        elif model_type in ['AutoencoderMLP']:
+            # Update MLP-specific graph (when using AutoencoderMLP)
+            self.mlp_loss_history.append((epoch, train_loss))
+            self.mlp_loss_ax.clear()
 
-    def clear_loss_history(self):
-        """Clear loss history and reset plot."""
-        self.loss_history = []
-        self.loss_ax.clear()
-        self.loss_ax.set_xlabel('Epoch')
-        self.loss_ax.set_ylabel('Error')
-        self.loss_ax.set_title('Training Error')
-        self.loss_ax.grid(True, alpha=0.3)
-        self.loss_canvas.draw()
+            if len(self.mlp_loss_history) > 0:
+                epochs = [e for e, _ in self.mlp_loss_history]
+                train_losses = [tl for _, tl in self.mlp_loss_history]
+
+                # Training loss (blue)
+                self.mlp_loss_ax.plot(
+                    epochs,
+                    train_losses,
+                    'b-',
+                    linewidth=2,
+                    marker='o',
+                    markersize=4,
+                    label='MLP Error',
+                )
+
+                self.mlp_loss_ax.grid(True, alpha=0.3)
+                handles, _ = self.mlp_loss_ax.get_legend_handles_labels()
+                if handles:
+                    self.mlp_loss_ax.legend(loc='upper right')
+                self.mlp_loss_ax.set_title("MLP Training Loss")
+                self.mlp_loss_ax.set_xlabel("Epoch")
+                self.mlp_loss_ax.set_ylabel("Loss")
+
+            self.mlp_loss_canvas.draw()
+            self.mlp_loss_canvas.flush_events()
+        
+        else:
+            # Default: use regular loss graph (for backward compatibility)
+            self.loss_history.append((epoch, train_loss))
+            self.loss_ax.clear()
+
+            if len(self.loss_history) > 0:
+                epochs = [e for e, _ in self.loss_history]
+                train_losses = [tl for _, tl in self.loss_history]
+
+                # Training loss (blue)
+                self.loss_ax.plot(
+                    epochs,
+                    train_losses,
+                    'b-',
+                    linewidth=2,
+                    marker='o',
+                    markersize=4,
+                    label='Training Error',
+                )
+
+                self.loss_ax.grid(True, alpha=0.3)
+                handles, _ = self.loss_ax.get_legend_handles_labels()
+                if handles:
+                    self.loss_ax.legend(loc='upper right')
+                self.loss_ax.set_title("Training Loss")
+                self.loss_ax.set_xlabel("Epoch")
+                self.loss_ax.set_ylabel("Loss")
+
+            self.loss_canvas.draw()
+
+    def clear_loss_history(self, model_type=None):
+        """Clear loss history and reset plot.
+        
+        Args:
+            model_type: 'Autoencoder', 'MLP', 'AutoencoderMLP', or None for all
+        """
+        if model_type == 'Autoencoder' or model_type is None:
+            self.ae_loss_history = []
+            if hasattr(self, 'ae_loss_ax'):
+                self.ae_loss_ax.clear()
+                self.ae_loss_ax.set_xlabel('Epoch')
+                self.ae_loss_ax.set_ylabel('Error')
+                self.ae_loss_ax.set_title('Autoencoder Training Error')
+                self.ae_loss_ax.grid(True, alpha=0.3)
+                self.ae_loss_canvas.draw()
+        
+        if model_type in ['MLP', 'AutoencoderMLP'] or model_type is None:
+            self.mlp_loss_history = []
+            if hasattr(self, 'mlp_loss_ax'):
+                self.mlp_loss_ax.clear()
+                self.mlp_loss_ax.set_xlabel('Epoch')
+                self.mlp_loss_ax.set_ylabel('Error')
+                self.mlp_loss_ax.set_title('MLP Training Error')
+                self.mlp_loss_ax.grid(True, alpha=0.3)
+                self.mlp_loss_canvas.draw()
+        
+        if model_type is None or model_type not in ['Autoencoder', 'AutoencoderMLP']:
+            # Also clear regular loss history for backward compatibility
+            self.loss_history = []
+            if hasattr(self, 'loss_ax'):
+                self.loss_ax.clear()
+                self.loss_ax.set_xlabel('Epoch')
+                self.loss_ax.set_ylabel('Error')
+                self.loss_ax.set_title('Training Error')
+                self.loss_ax.grid(True, alpha=0.3)
+                self.loss_canvas.draw()
 
     def switch_to_tab(self, tab_name):
         """Switch to a specific tab by name."""
@@ -426,6 +559,8 @@ class VisualizationFrame(ctk.CTkFrame):
             'train': "🎯 Training",
             'test': "📊 Test",
             'loss': "📈 Error Graph",
+            'ae_loss': "📈 Autoencoder Error",
+            'mlp_loss': "📈 MLP Error",
         }
         if tab_name in tab_mapping:
             self.tabview.set(tab_mapping[tab_name])
@@ -437,11 +572,14 @@ class VisualizationFrame(ctk.CTkFrame):
     def _add_tabs_for_mode(self, mode, model_type='MLP'):
         """Add tabs based on dataset mode and model type."""
         if mode == 'mnist':
-            # MNIST mode: Error Graph always, Reconstruction/Latent only for AutoencoderMLP
-            self.tabview.add("📈 Error Graph")
+            # MNIST mode: Separate error graphs for AutoencoderMLP
             if model_type == 'AutoencoderMLP':
+                self.tabview.add("📈 Autoencoder Error")
+                self.tabview.add("📈 MLP Error")
                 self.tabview.add("🔍 Reconstruction")
-                self.tabview.add("📉 Latent Space")
+            else:
+                # Regular MLP: single error graph
+                self.tabview.add("📈 Error Graph")
         else:
             # Manual mode: Training, Test, Error Graph
             self.tabview.add("🎯 Training")
@@ -476,45 +614,77 @@ class VisualizationFrame(ctk.CTkFrame):
             # Set to training tab by default
             self.tabview.set("🎯 Training")
         else:  # mnist
-            self._setup_loss_tab()
-            # Only setup reconstruction/latent tabs if AutoencoderMLP
+            # Setup loss tabs based on model type
             if model_type == 'AutoencoderMLP':
+                self._setup_ae_loss_tab()
+                self._setup_mlp_loss_tab()
                 self._setup_reconstruction_tab()
-                self._setup_latent_tab()
-            # Set to error graph by default
-            self.tabview.set("📈 Error Graph")
+                # Set to autoencoder error tab by default
+                self.tabview.set("📈 Autoencoder Error")
+            else:
+                self._setup_loss_tab()
+                # Set to error graph by default
+                self.tabview.set("📈 Error Graph")
             
             # Force canvas update to prevent black screen - AGGRESSIVE FIX
             # Immediate draw (attempt 1)
             self.update()  # Force full update
-            if hasattr(self, 'loss_canvas'):
-                try:
-                    self.loss_canvas.draw()
-                    self.loss_canvas.flush_events()
-                except:
-                    pass
+            
+            if model_type == 'AutoencoderMLP':
+                if hasattr(self, 'ae_loss_canvas'):
+                    try:
+                        self.ae_loss_canvas.draw()
+                        self.ae_loss_canvas.flush_events()
+                    except:
+                        pass
+                if hasattr(self, 'mlp_loss_canvas'):
+                    try:
+                        self.mlp_loss_canvas.draw()
+                        self.mlp_loss_canvas.flush_events()
+                    except:
+                        pass
+            else:
+                if hasattr(self, 'loss_canvas'):
+                    try:
+                        self.loss_canvas.draw()
+                        self.loss_canvas.flush_events()
+                    except:
+                        pass
             
             # Delayed redraw (attempt 2 - 200ms)
             def force_redraw_1():
                 try:
                     self.update_idletasks()
-                    if hasattr(self, 'loss_canvas'):
-                        self.loss_canvas.draw_idle()
-                        self.loss_canvas.flush_events()
                     if model_type == 'AutoencoderMLP':
+                        if hasattr(self, 'ae_loss_canvas'):
+                            self.ae_loss_canvas.draw_idle()
+                            self.ae_loss_canvas.flush_events()
+                        if hasattr(self, 'mlp_loss_canvas'):
+                            self.mlp_loss_canvas.draw_idle()
+                            self.mlp_loss_canvas.flush_events()
                         if hasattr(self, 'recon_canvas'):
                             self.recon_canvas.draw_idle()
-                        if hasattr(self, 'latent_canvas'):
-                            self.latent_canvas.draw_idle()
+                    else:
+                        if hasattr(self, 'loss_canvas'):
+                            self.loss_canvas.draw_idle()
+                            self.loss_canvas.flush_events()
                 except:
                     pass
             
             # Second delayed redraw (attempt 3 - 500ms)
             def force_redraw_2():
                 try:
-                    if hasattr(self, 'loss_canvas'):
-                        self.loss_canvas.draw()
-                        self.loss_canvas.flush_events()
+                    if model_type == 'AutoencoderMLP':
+                        if hasattr(self, 'ae_loss_canvas'):
+                            self.ae_loss_canvas.draw()
+                            self.ae_loss_canvas.flush_events()
+                        if hasattr(self, 'mlp_loss_canvas'):
+                            self.mlp_loss_canvas.draw()
+                            self.mlp_loss_canvas.flush_events()
+                    else:
+                        if hasattr(self, 'loss_canvas'):
+                            self.loss_canvas.draw()
+                            self.loss_canvas.flush_events()
                 except:
                     pass
             
@@ -536,23 +706,6 @@ class VisualizationFrame(ctk.CTkFrame):
         self.recon_canvas = FigureCanvasTkAgg(self.recon_fig, tab)
         self.recon_canvas.draw()
         self.recon_canvas.get_tk_widget().pack(fill="both", expand=True)
-    
-    def _setup_latent_tab(self):
-        """Setup latent space visualization tab."""
-        tab = self.tabview.tab("📉 Latent Space")
-        
-        # create matplotlib figure
-        self.latent_fig = Figure(figsize=(7, 6), dpi=100)
-        self.latent_ax = self.latent_fig.add_subplot(111)
-        self.latent_ax.set_xlabel('Latent Dimension 1')
-        self.latent_ax.set_ylabel('Latent Dimension 2')
-        self.latent_ax.set_title('Latent Space Visualization (2D Projection)')
-        self.latent_ax.grid(True, alpha=0.3)
-        
-        # embed in tkinter
-        self.latent_canvas = FigureCanvasTkAgg(self.latent_fig, tab)
-        self.latent_canvas.draw()
-        self.latent_canvas.get_tk_widget().pack(fill="both", expand=True)
     
     def update_reconstruction(self, original_images, reconstructed_images, mse_per_sample=None):
         """
@@ -597,58 +750,3 @@ class VisualizationFrame(ctk.CTkFrame):
         
         self.recon_fig.tight_layout()
         self.recon_canvas.draw()
-    
-    def update_latent_space(self, latent_features, labels, method='raw'):
-        """
-        Update latent space visualization with 2D scatter plot.
-        
-        Args:
-            latent_features: Latent representations (n_samples, latent_dim)
-            labels: Class labels for color coding
-            method: 'raw' (use first 2 dims) or 'tsne' (apply t-SNE)
-        """
-        self.latent_ax.clear()
-        
-        if len(latent_features) == 0:
-            self.latent_ax.set_title('Latent Space Visualization (No Data)')
-            self.latent_canvas.draw()
-            return
-        
-        # Extract 2D representation
-        latent_dim = len(latent_features[0])
-        
-        if method == 'raw' or latent_dim == 2:
-            # Use first 2 dimensions directly
-            x_coords = [f[0] for f in latent_features]
-            y_coords = [f[1] if latent_dim > 1 else 0.0 for f in latent_features]
-        else:
-            # For higher dimensions, we'd need t-SNE (not implemented yet)
-            # Fallback to first 2 dims
-            x_coords = [f[0] for f in latent_features]
-            y_coords = [f[1] if latent_dim > 1 else 0.0 for f in latent_features]
-        
-        # Color map for 10 digits
-        colors = COLOR_DIGITS
-        
-        # Plot each class separately for legend
-        for digit in range(10):
-            mask = [labels[i] == digit for i in range(len(labels))]
-            if any(mask):
-                x_class = [x_coords[i] for i in range(len(x_coords)) if mask[i]]
-                y_class = [y_coords[i] for i in range(len(y_coords)) if mask[i]]
-                self.latent_ax.scatter(
-                    x_class, y_class,
-                    c=colors[digit % len(colors)],
-                    s=50, alpha=0.7,
-                    edgecolors='black',
-                    linewidth=0.5,
-                    label=f'Digit {digit}'
-                )
-        
-        self.latent_ax.set_xlabel('Latent Dimension 1')
-        self.latent_ax.set_ylabel('Latent Dimension 2')
-        self.latent_ax.set_title('Latent Space Visualization (2D Projection)')
-        self.latent_ax.grid(True, alpha=0.3)
-        self.latent_ax.legend(loc='best', ncol=2, fontsize=8)
-        
-        self.latent_canvas.draw()

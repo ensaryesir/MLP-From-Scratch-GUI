@@ -1,4 +1,5 @@
 import math
+from utils.matrix_ops import MatrixOperations
 
 
 class ActivationFunctions:
@@ -21,15 +22,18 @@ class ActivationFunctions:
         """
         ReLU derivative: f'(z) = 1 if z > 0, else 0
         Gradient flows only through positive activations.
+        Uses element-wise multiplication (⊙) for clarity.
         """
-        result = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
+        matrix_ops = MatrixOperations()
+        
+        # Create derivative mask: 1 where Z > 0, else 0
+        derivative = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
         for i in range(len(Z)):
             for j in range(len(Z[0])):
-                if Z[i][j] <= 0:
-                    result[i][j] = 0.0
-                else:
-                    result[i][j] = dA[i][j]
-        return result
+                derivative[i][j] = 1.0 if Z[i][j] > 0 else 0.0
+        
+        # dZ = dA ⊙ derivative (element-wise multiplication)
+        return matrix_ops.element_multiply(dA, derivative)
     
     @staticmethod
     def tanh(Z):
@@ -48,13 +52,19 @@ class ActivationFunctions:
     def tanh_backward(dA, Z):
         """
         Tanh derivative: f'(z) = 1 - tanh²(z)
+        Uses element-wise multiplication (⊙) for clarity.
         """
-        result = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
+        matrix_ops = MatrixOperations()
+        
+        # Compute derivative: 1 - tanh²(z)
+        derivative = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
         for i in range(len(Z)):
             for j in range(len(Z[0])):
                 tanh_val = math.tanh(Z[i][j])
-                result[i][j] = dA[i][j] * (1.0 - tanh_val ** 2)
-        return result
+                derivative[i][j] = 1.0 - tanh_val ** 2
+        
+        # dZ = dA ⊙ derivative (element-wise multiplication)
+        return matrix_ops.element_multiply(dA, derivative)
     
     @staticmethod
     def sigmoid(Z):
@@ -75,14 +85,20 @@ class ActivationFunctions:
     def sigmoid_backward(dA, Z):
         """
         Sigmoid derivative: f'(z) = σ(z) * (1 - σ(z))
+        Uses element-wise multiplication (⊙) for clarity.
         """
-        result = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
+        matrix_ops = MatrixOperations()
+        
+        # Compute derivative: σ(z) * (1 - σ(z))
+        derivative = [[0.0 for _ in range(len(Z[0]))] for _ in range(len(Z))]
         for i in range(len(Z)):
             for j in range(len(Z[0])):
                 z_val = max(-500, min(500, Z[i][j]))
                 sig = 1.0 / (1.0 + math.exp(-z_val))
-                result[i][j] = dA[i][j] * sig * (1.0 - sig)
-        return result
+                derivative[i][j] = sig * (1.0 - sig)
+        
+        # dZ = dA ⊙ derivative (element-wise multiplication)
+        return matrix_ops.element_multiply(dA, derivative)
     
     @staticmethod
     def softmax(Z):

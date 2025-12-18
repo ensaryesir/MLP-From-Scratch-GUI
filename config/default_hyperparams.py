@@ -74,10 +74,10 @@ MLP_DEFAULTS = {
         'architecture': '784,128,64,10',
         'activation_hidden': 'relu',
         'activation_output': 'softmax',
-        'learning_rate': 0.1,
+        'learning_rate': 0.001,  # Lower LR needed for momentum (effective LR ≈ 0.01 with β=0.9)
         'batch_size': 32,
         'l2_lambda': 0.0001,
-        'use_momentum': True,
+        'use_momentum': True,  # Checkbox CHECKED = Momentum ON
         'momentum_factor': 0.9,
         'epochs': 100,
         'min_error': 0.01,
@@ -88,7 +88,7 @@ MLP_DEFAULTS = {
         'architecture': '2,10,2',
         'activation_hidden': 'tanh',
         'activation_output': 'softmax',
-        'learning_rate': 0.01,
+        'learning_rate': 0.001,
         'batch_size': 16,
         'l2_lambda': 0.001,
         'use_momentum': True,
@@ -101,7 +101,7 @@ MLP_DEFAULTS = {
         'architecture': '1,10,1',
         'activation_hidden': 'tanh',
         'activation_output': 'linear',
-        'learning_rate': 0.01,
+        'learning_rate': 0.001,
         'batch_size': 16,
         'l2_lambda': 0.001,
         'use_momentum': True,
@@ -122,17 +122,17 @@ AUTOENCODER_MLP_DEFAULTS = {
         'encoder_architecture': '784,128,64',  # Encoder layers (OPTIMIZED: smaller, faster)
         'activation_hidden': 'relu',
         'activation_output': 'softmax',
-        'learning_rate': 0.1,
-        'batch_size': 64,  # OPTIMIZED: larger batch = fewer iterations
+        'learning_rate': 0.01,
+        'batch_size': 32,  # OPTIMIZED: larger batch = fewer iterations
         'l2_lambda': 0.0001,
         'use_momentum': True,
         'momentum_factor': 0.9,
         'epochs': 50,  # Classifier training epochs
-        'min_error': 0.02,
+        'min_error': 0.05,
         # Autoencoder-specific parameters
         'ae_epochs': 30,  # Autoencoder pre-training epochs
         'ae_stopping_criteria': 'epochs',
-        'ae_min_error': 0.02,
+        'ae_min_error': 0.03,  # Realistic for GUI training (0.01 takes 400+ epochs)
         'freeze_encoder': True,  # Freeze encoder weights during classifier training
         'recon_samples': 10,  # Show all 10 digit classes (0-9)
     },

@@ -246,13 +246,22 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.stop_requested = False
         self.control_panel.enable_training(False)
         self.control_panel.set_status("Initializing training...")
-        self.visualization_frame.clear_loss_history()
+        # Clear appropriate loss history based on model type
+        model_type = self.control_panel.get_model_type()
+        if model_type == 'AutoencoderMLP':
+            self.visualization_frame.clear_loss_history('Autoencoder')
+            self.visualization_frame.clear_loss_history('AutoencoderMLP')
+        else:
+            self.visualization_frame.clear_loss_history()
         # Disable clicking during training
         self.visualization_frame.enable_clicking(False)
         
         # For MNIST, switch to error graph tab (training/test tabs are empty for high-D data)
         if getattr(self, 'dataset_mode', 'manual') == 'mnist':
-            self.visualization_frame.switch_to_tab('loss')
+            if model_type == 'AutoencoderMLP':
+                self.visualization_frame.switch_to_tab('ae_loss')
+            else:
+                self.visualization_frame.switch_to_tab('loss')
         
         # 1) Collect hyperparameters from control panel
         (
@@ -425,7 +434,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
 
             l2_lambda = self.control_panel.inputs.get_l2_lambda()
             use_momentum, momentum_factor = self.control_panel.inputs.get_momentum_config()
-
+            
             model = MLP(
                 layer_dims=architecture,
                 activation_funcs=activation_funcs,
@@ -486,7 +495,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
             else:
                 self.control_panel.set_status(f"Training stopped! {stop_reason}")
 
-            self.visualization_frame.update_loss_plot(epoch, loss)
+            self.visualization_frame.update_loss_plot(epoch, loss, model_type=model_type)
             
             # update decision boundary every 5 epochs (manual 2D data only)
             if getattr(self, 'dataset_mode', 'manual') == 'manual':
@@ -594,8 +603,12 @@ class NeuralNetworkVisualizer(ctk.CTk):
             if getattr(self, 'dataset_mode', 'manual') == 'manual':
                 self.visualization_frame.switch_to_tab('test')
             else:
-                # MNIST: stay on error graph
-                self.visualization_frame.switch_to_tab('loss')
+                # MNIST: switch to appropriate error tab based on model
+                model_type = self.control_panel.get_model_type()
+                if model_type == 'AutoencoderMLP':
+                    self.visualization_frame.switch_to_tab('mlp_loss')
+                else:
+                    self.visualization_frame.switch_to_tab('loss')
         else:
             self.control_panel.set_status("Training completed!")
             messagebox.showinfo("Success", "Training completed successfully!")
@@ -609,9 +622,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
     def _run_training_autoencoder(self, X_train, y_train, epochs, batch_size, stopping_criteria, min_error):
         """Prepare and start Stage 1 (Autoencoder) training."""
         # Get autoencoder configuration
-        print("DEBUG: Loading encoder configuration...")
         encoder_dims = self.control_panel.inputs.get_encoder_architecture()
-        print(f"DEBUG: Encoder dims = {encoder_dims}")
         ae_stop_mode, ae_epochs, ae_min_error_val = self.control_panel.inputs.get_ae_stopping_config()
         freeze_encoder = self.control_panel.inputs.get_freeze_encoder()
         recon_samples = self.control_panel.inputs.get_recon_samples()
@@ -628,10 +639,8 @@ class NeuralNetworkVisualizer(ctk.CTk):
         decoder_activations = ['relu'] * (num_encoder_layers - 1) + ['sigmoid']
         ae_activations = encoder_activations + decoder_activations
         
-        print(f"DEBUG: Total AE activations = {len(ae_activations)}")
-        print(f"DEBUG: Training data size = {len(X_train)} samples")
+        print(f"[AUTOENCODER] Starting training with {len(X_train)} samples, {ae_epochs} epochs")
         self.control_panel.set_status("Stage 1/2: Training Autoencoder...")
-        print("DEBUG: Initializing Autoencoder (this may take a moment)...")
         
         # Update GUI to show status before heavy operation
         self.update()  # Changed from update_idletasks()
@@ -662,15 +671,12 @@ class NeuralNetworkVisualizer(ctk.CTk):
             momentum_factor=momentum_factor,
         )
         
-        print("DEBUG: Autoencoder initialized successfully!")
-        print("DEBUG: Creating fit generator...")
+        print("[AUTOENCODER] Initialized successfully, creating training generator...")
         self.control_panel.set_status("Autoencoder ready. Starting training...")
         self.update()  # Allow GUI to update - changed from update_idletasks()
         
         # Create generator
         self.ae_fit_generator = autoencoder.fit(X_train, epochs=ae_epochs, batch_size=batch_size)
-        
-        print("DEBUG: Generator created. Starting training loop...")
         
         # Store context for Stage 2
         self.stage2_context = {
@@ -685,7 +691,6 @@ class NeuralNetworkVisualizer(ctk.CTk):
         
         
         # Start training in background thread
-        print("DEBUG: Starting background training thread...")
         self.current_model = autoencoder  # Store for potential interruption
         
         # Clear any old results from queue
@@ -712,28 +717,24 @@ class NeuralNetworkVisualizer(ctk.CTk):
         Sends results to GUI thread via Queue.
         """
         try:
-            print("DEBUG: Worker thread started")
-            
+            print("[AUTOENCODER] Worker thread started")
             for epoch, loss, trained_ae in fit_generator:
                 if self.stop_requested:
                     self.training_queue.put(('stopped', None, None, None))
-                    print("DEBUG: Worker stopped by user")
                     return
                 
                 if ae_stop_mode == 'error' and loss <= ae_min_error_val:
                     self.training_queue.put(('converged', epoch, loss, trained_ae))
-                    print(f"DEBUG: Worker converged at epoch {epoch}")
+                    print(f"[AUTOENCODER] Converged at epoch {epoch} with loss {loss:.6f}")
                     return
                 
                 self.training_queue.put(('epoch', epoch, loss, trained_ae))
-                print(f"DEBUG: Worker sent epoch {epoch} (loss: {loss:.6f})")
             
             self.training_queue.put(('complete', None, None, self.current_model))
-            print("DEBUG: Worker completed all epochs")
+            print("[AUTOENCODER] Training completed successfully")
             
         except Exception as e:
             self.training_queue.put(('error', str(e), None, None))
-            print(f"DEBUG: Worker error: {e}")
     
     def _poll_training_results(self):
         """Poll training queue for results from worker thread (GUI thread)."""
@@ -748,14 +749,15 @@ class NeuralNetworkVisualizer(ctk.CTk):
             elif result_type == 'converged':
                 epoch, loss, trained_ae = data1, data2, data3
                 self.control_panel.set_status(f"AE Converged (Loss {loss:.4f})")
-                self.visualization_frame.update_loss_plot(epoch, loss)
+                self.visualization_frame.update_loss_plot(epoch, loss, model_type='Autoencoder')
                 self._start_stage2_mlp(trained_ae)
                 
             elif result_type == 'complete':
                 trained_ae = data3
                 final_loss = getattr(self, 'last_ae_loss', 0.0)
                 self.control_panel.set_status(f"Stage 1 Complete! Final Loss: {final_loss:.6f}")
-                self.visualization_frame.clear_loss_history()
+                # Don't clear AE loss, just switch to MLP tab
+                self.visualization_frame.switch_to_tab('mlp_loss')
                 self.after(500, lambda: self._start_stage2_mlp(trained_ae))
                 
             elif result_type == 'stopped':
@@ -776,7 +778,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.last_ae_loss = loss
         
         self.control_panel.set_status(f"Stage 1/2: AE Epoch {epoch} - Recon Loss: {loss:.6f}")
-        self.visualization_frame.update_loss_plot(epoch, loss)
+        self.visualization_frame.update_loss_plot(epoch, loss, model_type='Autoencoder')
         self.update_idletasks()  # Lighter than update()
         
         ctx = self.stage2_context
@@ -812,7 +814,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
                 self.visualization_frame.update_reconstruction(X_sample, X_reconstructed, mse_per_sample)
                 self.update_idletasks()  # Lighter than update()
             except Exception as e:
-                print(f"DEBUG: Reconstruction error: {e}")
+                pass
 
     def _train_autoencoder_next_epoch(self):
         """Train one epoch of Autoencoder (Stage 1)."""
@@ -822,9 +824,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
             return
 
         try:
-            print("DEBUG: Calling next() on AE generator...")
             epoch, loss, trained_ae = next(self.ae_fit_generator)
-            print(f"DEBUG: Epoch {epoch} completed with loss {loss:.6f}")
             self.current_model = trained_ae # Keep track of the latest trained AE
             self.last_ae_loss = loss  # Track last loss for StopIteration case
             
@@ -832,13 +832,13 @@ class NeuralNetworkVisualizer(ctk.CTk):
             ctx = self.stage2_context
             if ctx['ae_stop_mode'] == 'error' and loss <= ctx['ae_min_error_val']:
                 self.control_panel.set_status(f"AE Converged (Loss {loss:.4f})")
-                self.visualization_frame.update_loss_plot(epoch, loss)
+                self.visualization_frame.update_loss_plot(epoch, loss, model_type='Autoencoder')
                 # Proceed to Stage 2 immediately
                 self._start_stage2_mlp(trained_ae)
                 return
 
             self.control_panel.set_status(f"Stage 1/2: AE Epoch {epoch} - Recon Loss: {loss:.6f}")
-            self.visualization_frame.update_loss_plot(epoch, loss)
+            self.visualization_frame.update_loss_plot(epoch, loss, model_type='Autoencoder')
             
             # Force GUI update (not just idle tasks)
             self.update()  # Changed from update_idletasks()
@@ -872,7 +872,7 @@ class NeuralNetworkVisualizer(ctk.CTk):
             # Stage 1 Complete (max epochs reached) -> Start Stage 2
             final_loss = getattr(self, 'last_ae_loss', 0.0)
             self.control_panel.set_status(f"Stage 1/2 Complete! Final Reconstruction Loss: {final_loss:.6f}. Starting Stage 2 (MLP)...")
-            self.visualization_frame.clear_loss_history() # Clear for MLP training
+            # Switch to MLP error tab (don't clear AE loss)
             self.after(500, lambda: self._start_stage2_mlp(self.current_model)) # Pass the last trained AE
 
     def _start_stage2_mlp(self, trained_ae):
@@ -884,6 +884,9 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.trained_autoencoder = trained_ae # Save for reuse
         ctx = self.stage2_context
         
+        # Switch to MLP error tab
+        self.visualization_frame.switch_to_tab('mlp_loss')
+        print(f"[MLP] Starting classifier training (Encoder: {'Frozen' if ctx['freeze_encoder'] else 'Trainable'})")
         self.control_panel.set_status("Stage 1 Complete. Starting Stage 2: MLP Training...")
         
         # Extract trained encoder weights using the correct method
