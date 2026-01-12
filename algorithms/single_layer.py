@@ -1,25 +1,9 @@
 import random
 import math
-
-from utils import MatrixOperations
+import numpy as np
 
 
 class Perceptron:
-    """
-    Classic Perceptron algorithm (Rosenblatt, 1958).
-    
-    Original Perceptron:
-    - Binary classification with step activation
-    - Updates ONLY when misclassification occurs
-    - Online learning (one sample at a time)
-    
-    This implementation:
-    - Multi-class extension using Winner-Takes-All (Argmax)
-    - Classification: Updates only on errors (original behavior)
-    - Regression: Updates every sample (continuous error minimization)
-    
-    Learning rule: Δw = η * (y_true - y_pred) * x
-    """
 
     def __init__(self, learning_rate=0.01, n_classes=2, task='classification'):
         self.learning_rate = learning_rate
@@ -27,135 +11,89 @@ class Perceptron:
         self.task = task
         self.weights = None
         self.bias = None
-        self.matrix_ops = MatrixOperations()  # Matrix operations helper
 
     def _initialize_parameters(self, n_features):
-        """Initialize weights with small random values (Gaussian) and biases to zero."""
-        self.weights = []
-        for i in range(n_features):
-            row = []
-            for j in range(self.n_classes):
-                # Box-Muller: Generate Gaussian random numbers
-                u1 = random.random()
-                u2 = random.random()
-                z = math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
-                row.append(z * 0.01)  # Small random weight
-            self.weights.append(row)
-        
-        self.bias = [[0.0 for _ in range(self.n_classes)]]
+        self.weights = np.random.randn(n_features, self.n_classes) * 0.01
+        self.bias = np.zeros((1, self.n_classes))
 
     def predict(self, X):
-        """Make predictions on input data."""
         if self.weights is None:
-            return [0 for _ in range(len(X))]
+            return np.zeros(len(X))
+        
+        X = np.array(X)
+        if hasattr(self, 'weights') and X.shape[1] != self.weights.shape[0]:
+             pass
 
-        # Linear combination: z = X·W + b
-        z = self.matrix_ops.add(self.matrix_ops.multiply(X, self.weights), self.bias)
+        z = np.dot(X, self.weights) + self.bias
         
         if self.task == 'regression':
-            # Return raw output (no activation)
             if self.n_classes == 1:
-                return [row[0] for row in z]
+                return z.flatten()
             return z
         else:
-            # Classification: Apply argmax (Winner-Takes-All)
-            predictions = []
-            for row in z:
-                # Find class with highest activation
-                max_idx = 0
-                max_val = row[0]
-                for j in range(1, len(row)):
-                    if row[j] > max_val:
-                        max_val = row[j]
-                        max_idx = j
-                
-                predictions.append(max_idx)
-            
-            return predictions
+            return np.argmax(z, axis=1)
 
-    def fit(self, X, y, epochs=100):
-        """Train using online Perceptron learning (updates after each sample)."""
-        n_samples = len(X)
-        n_features = len(X[0]) if n_samples > 0 else 0
+    def fit(self, X, y, epochs=100, stop_callback=None):
+        X = np.array(X)
+        y = np.array(y)
+        
+        n_samples, n_features = X.shape
         
         if self.weights is None:
             self._initialize_parameters(n_features)
         
-        # Prepare targets
         if self.task == 'regression':
-            # Regression: Use raw continuous values
-            targets = []
-            for val in y:
-                if isinstance(val, (list, tuple)):
-                    targets.append(val)
-                else:
-                    targets.append([float(val)])
+            if y.ndim == 1:
+                 targets = y.reshape(-1, 1)
+            else:
+                 targets = y
         else:
-            # Classification: Convert to one-hot encoding
-            targets = [[0.0 for _ in range(self.n_classes)] for _ in range(n_samples)]
-            for i in range(n_samples):
-                targets[i][int(y[i])] = 1.0
+            targets = np.zeros((n_samples, self.n_classes))
+
+            y_indices = y.astype(int)
+
+            targets[np.arange(n_samples), y_indices.flatten()] = 1.0
         
         for epoch in range(epochs):
+            if stop_callback and stop_callback():
+                return
+
             total_error = 0.0
             
-            # Process each sample individually (online learning)
-            for i in range(n_samples):
-                xi = [X[i]]
-                target_i = [targets[i]]
+            indices = np.random.permutation(n_samples)
+            
+            for i in indices:
+                if stop_callback and stop_callback():
+                    return
+                    
+                xi = X[i:i+1]
+                target_i = targets[i:i+1]
                 
-                # Forward: z = x·W + b
-                z = self.matrix_ops.add(self.matrix_ops.multiply(xi, self.weights), self.bias)
+                z = np.dot(xi, self.weights) + self.bias
                 
                 if self.task == 'regression':
-                    output = z  # No activation (linear)
+                    output = z
                 else:
-                    # Argmax: Winner-Takes-All activation
-                    output = [[0.0 for _ in range(self.n_classes)]]
-                    max_idx = 0
-                    max_val = z[0][0]
-                    for j in range(1, len(z[0])):
-                        if z[0][j] > max_val:
-                            max_val = z[0][j]
-                            max_idx = j
-                    output[0][max_idx] = 1.0  # One-hot output
+                    output = np.zeros_like(z)
+                    output[0, np.argmax(z)] = 1.0
                 
-                # Calculate error: e = y_true - y_pred
-                error = [[0.0 for _ in range(self.n_classes)]]
-                has_error = False
-                for j in range(self.n_classes):
-                    error[0][j] = target_i[0][j] - output[0][j]
-                    if abs(error[0][j]) > 1e-9:
-                        has_error = True
-                    total_error += abs(error[0][j])
+                error = target_i - output
                 
-                # Update rule (Rosenblatt, 1958):
-                # Classification: Update ONLY if misclassified
-                # Regression: Update every sample
-                should_update = has_error if self.task == 'classification' else True
+                abs_error = np.sum(np.abs(error))
+                total_error += abs_error
+                
+                should_update = True
+                if self.task == 'classification' and abs_error < 1e-9:
+                    should_update = False
                 
                 if should_update:
-                    # Δw = η * error * x
-                    xi_T = self.matrix_ops.transpose(xi)
-                    weight_update = self.matrix_ops.multiply(xi_T, error)
-                    
-                    for ii in range(len(self.weights)):
-                        for jj in range(len(self.weights[0])):
-                            self.weights[ii][jj] += self.learning_rate * weight_update[ii][jj]
-                    
-                    for jj in range(len(self.bias[0])):
-                        self.bias[0][jj] += self.learning_rate * error[0][jj]
+                    self.weights += self.learning_rate * np.dot(xi.T, error)
+                    self.bias += self.learning_rate * error
             
-            # Return average error (MAE)
             avg_error = total_error / (n_samples * self.n_classes)
             yield epoch + 1, avg_error, self
 
 class DeltaRule:
-    """
-    Delta Rule/ADALINE (Widrow-Hoff, 1960).
-    Uses linear activation and minimizes MSE with batch gradient descent.
-    More stable than Perceptron but still limited to linear boundaries.
-    """
     
     def __init__(self, learning_rate=0.01, n_classes=2, task='classification'):
         self.learning_rate = learning_rate
@@ -163,116 +101,57 @@ class DeltaRule:
         self.task = task
         self.weights = None
         self.bias = None
-        self.matrix_ops = MatrixOperations()  # Matrix operations helper
         
     def _initialize_parameters(self, n_features):
-        """Initialize weights with small random values (Gaussian) and biases to zero."""
-        self.weights = []
-        for i in range(n_features):
-            row = []
-            for j in range(self.n_classes):
-                # Box-Muller: Generate Gaussian random numbers
-                u1 = random.random()
-                u2 = random.random()
-                z = math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
-                row.append(z * 0.01)
-            self.weights.append(row)
-        
-        self.bias = [[0.0 for _ in range(self.n_classes)]]
+        self.weights = np.random.randn(n_features, self.n_classes) * 0.01
+        self.bias = np.zeros((1, self.n_classes))
 
-    def _activation(self, x):
-        """Linear activation: f(x) = x (no transformation)."""
-        return [row[:] for row in x]
-    
     def predict(self, X):
-        """Make predictions on input data."""
         if self.weights is None:
-            return [0 for _ in range(len(X))]
+            return np.zeros(len(X))
         
-        # z = X·W + b, then apply linear activation
-        z = self.matrix_ops.add(self.matrix_ops.multiply(X, self.weights), self.bias)
-        a = self._activation(z)
+        X = np.array(X)
+        z = np.dot(X, self.weights) + self.bias
         
         if self.task == 'regression':
-            # Return raw output
             if self.n_classes == 1:
-                return [row[0] for row in a]
-            return a
+                return z.flatten()
+            return z
         else:
-            # Classification: Return class with highest output
-            predictions = []
-            for row in a:
-                max_idx = 0
-                max_val = row[0]
-                for j in range(1, len(row)):
-                    if row[j] > max_val:
-                        max_val = row[j]
-                        max_idx = j
-                predictions.append(max_idx)
-            
-            return predictions
+            return np.argmax(z, axis=1)
     
-    def fit(self, X, y, epochs=100):
-        """Train using batch gradient descent to minimize MSE."""
-        n_samples = len(X)
-        n_features = len(X[0]) if n_samples > 0 else 0
+    def fit(self, X, y, epochs=100, stop_callback=None):
+        X = np.array(X)
+        y = np.array(y)
+        n_samples, n_features = X.shape
         
         if self.weights is None:
             self._initialize_parameters(n_features)
         
-        # Prepare targets
         if self.task == 'regression':
-            # Regression: Use raw continuous values
-            targets = []
-            for val in y:
-                if isinstance(val, (list, tuple)):
-                    targets.append(val)
-                else:
-                    targets.append([float(val)])
+             if y.ndim == 1:
+                 targets = y.reshape(-1, 1)
+             else:
+                 targets = y
         else:
-            # Classification: Convert to one-hot encoding
-            targets = [[0.0 for _ in range(self.n_classes)] for _ in range(n_samples)]
-            for i in range(n_samples):
-                targets[i][int(y[i])] = 1.0
+            targets = np.zeros((n_samples, self.n_classes))
+            y_indices = y.astype(int)
+            targets[np.arange(n_samples), y_indices.flatten()] = 1.0
         
         for epoch in range(epochs):
-            # Forward pass: Compute activations for all samples
-            z = self.matrix_ops.add(self.matrix_ops.multiply(X, self.weights), self.bias)
-            a = self._activation(z)
+            if stop_callback and stop_callback():
+                return
+                
+            z = np.dot(X, self.weights) + self.bias
             
-            # Error: e = y - a
-            error = self.matrix_ops.subtract(targets, a)
+            error = targets - z
             
-            # MSE for monitoring: (1/n)Σ(y-a)²
-            loss = 0.0
-            for i in range(len(error)):
-                for j in range(len(error[0])):
-                    loss += error[i][j] ** 2
-            loss /= (len(error) * len(error[0]))
+            loss = np.mean(error ** 2)
             
-            # Gradient: ∂L/∂w = -(1/n)X^T@(y-a)
-            # Update: w = w - η*∂L/∂w = w + η*(1/n)*X^T@(y-a)
-            X_T = self.matrix_ops.transpose(X)
-            weight_gradient = self.matrix_ops.scalar_multiply(
-                self.matrix_ops.multiply(X_T, error),
-                1.0 / n_samples
-            )
+            grad_W = np.dot(X.T, error) / n_samples
+            grad_b = np.mean(error, axis=0, keepdims=True)
             
-            # Bias gradient: (1/n)Σ(y-a)
-            bias_gradient = [[0.0 for _ in range(self.n_classes)]]
-            for i in range(len(error)):
-                for j in range(len(error[0])):
-                    bias_gradient[0][j] += error[i][j]
-            for j in range(len(bias_gradient[0])):
-                bias_gradient[0][j] /= n_samples
+            self.weights += self.learning_rate * grad_W
+            self.bias += self.learning_rate * grad_b
             
-            # Apply updates
-            for i in range(len(self.weights)):
-                for j in range(len(self.weights[0])):
-                    self.weights[i][j] += self.learning_rate * weight_gradient[i][j]
-            
-            for j in range(len(self.bias[0])):
-                self.bias[0][j] += self.learning_rate * bias_gradient[0][j]
-            
-            # Return MSE loss
             yield epoch + 1, loss, self
