@@ -1,43 +1,28 @@
-"""
-Control panel UI - right sidebar with hyperparameters.
-"""
-
 import customtkinter as ctk
 from config import UI_SAFETY_DEFAULTS
 
-
 class ControlPanelInputs:
-    """
-    Helper class to safely retrieve values from ControlPanel UI widgets.
-    Prevents application crashes by returning default values if parsing fails.
-    """
     def __init__(self, control_panel):
         self.cp = control_panel
 
     def get_architecture(self):
-        """Get layer architecture with automatic regression validation."""
         try:
             arch_str = self.cp.architecture_entry.get()
-            # Parse comma-separated list
             arch = [int(x.strip()) for x in arch_str.split(',')]
             
-            # Validate output layer
             task = self.cp.task_type.get()
             
-            # Helper to update UI
             def update_ui(new_arch):
                 self.cp.architecture_entry.delete(0, 'end')
                 self.cp.architecture_entry.insert(0, ','.join(map(str, new_arch)))
 
             if task == "Regression":
-                # Ensure output dim is 1 for regression (scalar output)
                 if arch[-1] != 1:
                     print(f"Warning: Regression requires output dim 1 (got {arch[-1]}). Auto-fixing.")
                     arch[-1] = 1
                     update_ui(arch)
             
             elif task == "Classification" and self.cp.dataset_mode.get() == 'Manual':
-                # Ensure output dim matches number of classes for manual classification
                 num_classes = len(self.cp.class_radio_buttons)
                 if num_classes > 0 and arch[-1] != num_classes:
                     print(f"Update: Setting output dim to {num_classes} to match classes.")
@@ -61,10 +46,9 @@ class ControlPanelInputs:
             return UI_SAFETY_DEFAULTS['epochs']
     
     def get_stopping_criteria(self):
-        """Returns ('epochs' or 'error', max_epochs, min_error)"""
         criteria = self.cp.stopping_criteria.get()
         try:
-            max_epochs = int(self.cp.epochs_entry.get()) if criteria == "epochs" else 10000
+            max_epochs = int(self.cp.epochs_entry.get()) if criteria == "epochs" else 10000000
         except:
             max_epochs = 10000
         try:
@@ -93,7 +77,6 @@ class ControlPanelInputs:
             return UI_SAFETY_DEFAULTS['test_split'] / 100.0
     
     def get_momentum_config(self):
-        """Returns (use_momentum, momentum_factor)"""
         try:
             factor = float(self.cp.momentum_entry.get())
         except:
@@ -102,10 +85,8 @@ class ControlPanelInputs:
         checkbox_value = self.cp.use_momentum_var.get()
         
         if checkbox_value:
-            # Momentum ON → use actual factor
             return True, factor
         else:
-            # Momentum OFF → set factor to 0 (disables accumulation)
             return True, 0.0
 
     def get_encoder_architecture(self):
@@ -122,7 +103,6 @@ class ControlPanelInputs:
             return UI_SAFETY_DEFAULTS['ae_epochs']
             
     def get_ae_stopping_config(self):
-        """Returns (criteria, max_epochs, min_error) for AE."""
         criteria = self.cp.ae_stopping_criteria.get()
         try:
             epochs = int(self.cp.ae_epochs_entry.get())
@@ -148,27 +128,39 @@ class ControlPanelInputs:
         except:
             return UI_SAFETY_DEFAULTS['recon_samples']
 
+    def get_activation_functions(self):
+        try:
+            hidden_activation = self.cp.activation_hidden_var.get()
+            output_activation = self.cp.activation_output_var.get()
+            return [hidden_activation, output_activation]
+        except:
+            return ['relu', 'softmax']
+
+
 
 class ControlPanel(ctk.CTkFrame):
-    """Right sidebar with all controls and hyperparameter inputs."""
-
     def __init__(self, parent, on_add_class=None, 
                  on_remove_class=None, on_clear_data=None, 
-
                  on_start_training=None, on_stop_training=None, on_task_changed_callback=None,
                  on_dataset_changed_callback=None,
                  on_generate_xor=None, on_generate_circles=None,
                  on_generate_moons=None, on_generate_blobs=None,
                  on_generate_sine=None, on_generate_parabola=None,
-                 on_generate_linear=None, on_generate_abs=None, **kwargs):
+                 on_generate_linear=None, on_generate_abs=None, 
+                 on_save_model=None, on_load_model=None, on_test_handwriting=None,
+                 on_save_encoder=None, on_load_encoder=None, **kwargs):
         super().__init__(parent, **kwargs)
         
-        # callbacks
         self.on_add_class = on_add_class
         self.on_remove_class = on_remove_class
         self.on_clear_data = on_clear_data
         self.on_start_training = on_start_training
         self.on_stop_training = on_stop_training
+        self.on_save_model = on_save_model
+        self.on_load_model = on_load_model
+        self.on_test_handwriting = on_test_handwriting
+        self.on_save_encoder = on_save_encoder
+        self.on_load_encoder = on_load_encoder
         self.on_task_changed_callback = on_task_changed_callback
         self.on_dataset_changed_callback = on_dataset_changed_callback
 
@@ -177,7 +169,6 @@ class ControlPanel(ctk.CTkFrame):
         self.on_generate_moons = on_generate_moons
         self.on_generate_blobs = on_generate_blobs
         
-        # Regression callbacks
         self.on_generate_sine = on_generate_sine
         self.on_generate_parabola = on_generate_parabola
         self.on_generate_linear = on_generate_linear
@@ -187,18 +178,14 @@ class ControlPanel(ctk.CTkFrame):
         self.class_radio_buttons = []
         self.dataset_mode = ctk.StringVar(value="Manual")
         
-        # Helper for input safety
         self.inputs = ControlPanelInputs(self)
         
         self._setup_ui()
     
     def _setup_ui(self):
-        """Setup all UI widgets."""
-        # Title
         title_label = ctk.CTkLabel(self, text="⚙️ Control Panel", font=ctk.CTkFont(size=20, weight="bold"))
         title_label.pack(pady=10, padx=10)
         
-        # Task Selection
         task_frame = ctk.CTkFrame(self)
         task_frame.pack(fill="x", padx=10, pady=5)
         
@@ -218,14 +205,12 @@ class ControlPanel(ctk.CTkFrame):
         self.dataset_switch = ctk.CTkSegmentedButton(dataset_frame, values=["Manual", "MNIST"], variable=self.dataset_mode, command=self._on_dataset_changed)
         self.dataset_switch.pack(pady=5, padx=10, fill="x")
 
-        # Class Management
         self.class_management_frame = ctk.CTkFrame(self)
         self.class_management_frame.pack(fill="x", padx=10, pady=5)
         
         self.class_label = ctk.CTkLabel(self.class_management_frame, text="🎨 Class Management", font=ctk.CTkFont(size=14, weight="bold"))
         self.class_label.pack(pady=5)
         
-        # class buttons
         class_btn_frame = ctk.CTkFrame(self.class_management_frame)
         class_btn_frame.pack(pady=5)
         
@@ -235,12 +220,9 @@ class ControlPanel(ctk.CTkFrame):
         self.remove_class_btn = ctk.CTkButton(class_btn_frame, text="- Class", command=self._on_remove_class_clicked, width=100)
         self.remove_class_btn.pack(side="left", padx=5)
         
-        # radio buttons
         self.class_radio_frame = ctk.CTkFrame(self.class_management_frame)
         self.class_radio_frame.pack(pady=5, fill="x", padx=5)
 
-        # Dataset Presets (Manual Mode Only)
-        # 1. Classification Presets
         self.preset_classification_frame = ctk.CTkFrame(self.class_management_frame)
         self.preset_classification_frame.pack(fill="x", padx=5, pady=5)
         
@@ -262,9 +244,7 @@ class ControlPanel(ctk.CTkFrame):
         self.btn_blob = ctk.CTkButton(preset_grid_cls, text="Blobs", width=60, command=self._on_blobs_clicked)
         self.btn_blob.grid(row=1, column=1, padx=2, pady=2)
         
-        # 2. Regression Presets (Initially Hidden by pack_forget, handled in _on_task_changed)
         self.preset_regression_frame = ctk.CTkFrame(self.class_management_frame)
-        # self.preset_regression_frame.pack(fill="x", padx=5, pady=5)  <-- Hidden by default
         
         preset_label_reg = ctk.CTkLabel(self.preset_regression_frame, text="⚡ Regression Presets", font=ctk.CTkFont(size=12, weight="bold"))
         preset_label_reg.pack(pady=2)
@@ -284,7 +264,6 @@ class ControlPanel(ctk.CTkFrame):
         self.btn_abs = ctk.CTkButton(preset_grid_reg, text="Abs(x)", width=60, command=self._on_abs_clicked)
         self.btn_abs.grid(row=1, column=1, padx=2, pady=2)
         
-        # Model Selection
         model_frame = ctk.CTkFrame(self)
         model_frame.pack(fill="x", padx=10, pady=5)
         
@@ -295,11 +274,9 @@ class ControlPanel(ctk.CTkFrame):
         self.model_menu = ctk.CTkOptionMenu(model_frame, values=["Single-Layer (Perceptron)", "Single-Layer (Delta Rule)", "Multi-Layer (MLP)"], variable=self.model_type, command=self._on_model_changed)
         self.model_menu.pack(pady=5, padx=10, fill="x")
         
-        # Hyperparameters
         hyper_frame = ctk.CTkScrollableFrame(self, label_text="⚡ Hyperparameters", label_font=ctk.CTkFont(size=14, weight="bold"))
         hyper_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
-        # layer architecture
         self.architecture_frame = ctk.CTkFrame(hyper_frame)
         self.architecture_frame.pack(fill="x", padx=10, pady=2)
         
@@ -310,7 +287,6 @@ class ControlPanel(ctk.CTkFrame):
         self.architecture_entry.pack(side="right", padx=5)
         self.architecture_entry.insert(0, "2,5,3")
         
-        # hidden activation
         self.activation_hidden_frame = ctk.CTkFrame(hyper_frame)
         self.activation_hidden_frame.pack(fill="x", padx=10, pady=2)
         
@@ -321,7 +297,6 @@ class ControlPanel(ctk.CTkFrame):
         self.activation_hidden_menu = ctk.CTkOptionMenu(self.activation_hidden_frame, values=["relu", "tanh", "sigmoid", "linear"], variable=self.activation_hidden_var, width=150)
         self.activation_hidden_menu.pack(side="right", padx=5)
         
-        # output activation
         self.activation_output_frame = ctk.CTkFrame(hyper_frame)
         self.activation_output_frame.pack(fill="x", padx=10, pady=2)
         
@@ -332,7 +307,6 @@ class ControlPanel(ctk.CTkFrame):
         self.activation_output_menu = ctk.CTkOptionMenu(self.activation_output_frame, values=["softmax", "sigmoid", "linear"], variable=self.activation_output_var, width=150)
         self.activation_output_menu.pack(side="right", padx=5)
         
-        # learning rate
         lr_frame = ctk.CTkFrame(hyper_frame)
         lr_frame.pack(fill="x", padx=10, pady=2)
         
@@ -343,7 +317,6 @@ class ControlPanel(ctk.CTkFrame):
         self.learning_rate_entry.pack(side="right", padx=5)
         self.learning_rate_entry.insert(0, "0.1")
         
-        # Stopping Criteria
         stopping_frame = ctk.CTkFrame(hyper_frame)
         stopping_frame.pack(fill="x", padx=10, pady=5)
         
@@ -360,7 +333,6 @@ class ControlPanel(ctk.CTkFrame):
         error_radio = ctk.CTkRadioButton(stopping_radio_frame, text="Min Error", variable=self.stopping_criteria, value="error", command=self._on_stopping_criteria_changed)
         error_radio.pack(side="left", padx=5)
         
-        # Epochs
         self.epochs_frame = ctk.CTkFrame(stopping_frame)
         self.epochs_frame.pack(fill="x", padx=10, pady=2)
         
@@ -371,7 +343,6 @@ class ControlPanel(ctk.CTkFrame):
         self.epochs_entry.pack(side="right", padx=5)
         self.epochs_entry.insert(0, "100")
         
-        # Min Error
         self.min_error_frame = ctk.CTkFrame(stopping_frame)
         self.min_error_frame.pack(fill="x", padx=10, pady=2)
         
@@ -382,10 +353,8 @@ class ControlPanel(ctk.CTkFrame):
         self.min_error_entry.pack(side="right", padx=5)
         self.min_error_entry.insert(0, "0.001")
         
-        # Initially hide min_error_frame (visibility updated below)
         self.min_error_frame.pack_forget()
         
-        # Batch Size (MLP only)
         self.batch_frame = ctk.CTkFrame(hyper_frame)
         self.batch_frame.pack(fill="x", padx=10, pady=2)
         
@@ -396,7 +365,6 @@ class ControlPanel(ctk.CTkFrame):
         self.batch_size_entry.pack(side="right", padx=5)
         self.batch_size_entry.insert(0, "32")
         
-        # L2 Regularization (MLP only)
         self.l2_frame = ctk.CTkFrame(hyper_frame)
         self.l2_frame.pack(fill="x", padx=10, pady=2)
         
@@ -407,7 +375,6 @@ class ControlPanel(ctk.CTkFrame):
         self.l2_entry.pack(side="right", padx=5)
         self.l2_entry.insert(0, "0.0")
         
-        # Momentum (MLP only)
         self.momentum_frame = ctk.CTkFrame(hyper_frame)
         self.momentum_frame.pack(fill="x", padx=10, pady=2)
         
@@ -422,14 +389,11 @@ class ControlPanel(ctk.CTkFrame):
         mom_label = ctk.CTkLabel(self.momentum_frame, text="Factor:")
         mom_label.pack(side="right", padx=2)
         
-        # Autoencoder-specific Hyperparameters (hidden by default)
         self.autoencoder_frame = ctk.CTkFrame(hyper_frame)
-        # Will be packed/unpacked based on model selection
         
         ae_title = ctk.CTkLabel(self.autoencoder_frame, text="🔧 Autoencoder Config", font=ctk.CTkFont(size=12, weight="bold"))
         ae_title.pack(pady=2)
         
-        # Encoder Architecture
         encoder_arch_frame = ctk.CTkFrame(self.autoencoder_frame)
         encoder_arch_frame.pack(fill="x", padx=10, pady=2)
         
@@ -440,7 +404,6 @@ class ControlPanel(ctk.CTkFrame):
         self.encoder_architecture_entry.pack(side="right", padx=5)
         self.encoder_architecture_entry.insert(0, "784,128,32")
         
-        # Autoencoder Stopping Criteria
         ae_stop_frame = ctk.CTkFrame(self.autoencoder_frame)
         ae_stop_frame.pack(fill="x", padx=10, pady=2)
         
@@ -457,7 +420,6 @@ class ControlPanel(ctk.CTkFrame):
         )
         self.ae_stopping_switch.pack(side="right", padx=5)
 
-        # AE Epochs Input
         self.ae_epochs_frame = ctk.CTkFrame(self.autoencoder_frame)
         self.ae_epochs_frame.pack(fill="x", padx=10, pady=2)
         
@@ -468,9 +430,7 @@ class ControlPanel(ctk.CTkFrame):
         self.ae_epochs_entry.pack(side="right", padx=5)
         self.ae_epochs_entry.insert(0, "50")
         
-        # AE Min Error Input (Initially hidden)
         self.ae_min_error_frame = ctk.CTkFrame(self.autoencoder_frame)
-        # self.ae_min_error_frame.pack(fill="x", padx=10, pady=2) # Hidden by default
         
         ae_error_label = ctk.CTkLabel(self.ae_min_error_frame, text="AE Min Error:")
         ae_error_label.pack(side="left", padx=5)
@@ -479,7 +439,6 @@ class ControlPanel(ctk.CTkFrame):
         self.ae_min_error_entry.pack(side="right", padx=5)
         self.ae_min_error_entry.insert(0, "0.001")
         
-        # Freeze Encoder Checkbox
         freeze_frame = ctk.CTkFrame(self.autoencoder_frame)
         freeze_frame.pack(fill="x", padx=10, pady=2)
         
@@ -487,7 +446,6 @@ class ControlPanel(ctk.CTkFrame):
         self.freeze_encoder_check = ctk.CTkCheckBox(freeze_frame, text="Freeze Encoder (faster training)", variable=self.freeze_encoder_var, width=20)
         self.freeze_encoder_check.pack(side="left", padx=5)
         
-        # Reconstruction Samples
         recon_samples_frame = ctk.CTkFrame(self.autoencoder_frame)
         recon_samples_frame.pack(fill="x", padx=10, pady=2)
         
@@ -498,18 +456,60 @@ class ControlPanel(ctk.CTkFrame):
         self.recon_samples_entry.pack(side="right", padx=5)
         self.recon_samples_entry.insert(0, "10")
         
-        # Test Split
-        test_frame = ctk.CTkFrame(hyper_frame)
-        test_frame.pack(fill="x", padx=10, pady=2)
         
-        test_label = ctk.CTkLabel(test_frame, text="Test Split (%):")
+        self.test_split_frame = ctk.CTkFrame(hyper_frame)
+        self.test_split_frame.pack(fill="x", padx=10, pady=2)
+        
+        test_label = ctk.CTkLabel(self.test_split_frame, text="Test Split (%):")
         test_label.pack(side="left", padx=5)
         
-        self.test_split_entry = ctk.CTkEntry(test_frame, width=100)
+        self.test_split_entry = ctk.CTkEntry(self.test_split_frame, width=100)
         self.test_split_entry.pack(side="right", padx=5)
         self.test_split_entry.insert(0, "20")
         
-        # Control Buttons
+        self.model_io_frame = ctk.CTkFrame(hyper_frame)
+        self.model_io_frame.pack(fill="x", padx=10, pady=5)
+        
+        io_label = ctk.CTkLabel(self.model_io_frame, text="💾 Model I/O", font=ctk.CTkFont(size=12, weight="bold"))
+        io_label.pack(pady=2)
+        
+        io_btn_frame = ctk.CTkFrame(self.model_io_frame)
+        io_btn_frame.pack(fill="x", padx=2, pady=2)
+        
+        self.save_btn = ctk.CTkButton(io_btn_frame, text="Save Model", width=80, command=self._on_save_clicked)
+        self.save_btn.pack(side="left", padx=5, expand=True)
+        
+        self.load_btn = ctk.CTkButton(io_btn_frame, text="Load Model", width=80, command=self._on_load_clicked)
+        self.load_btn.pack(side="right", padx=5, expand=True)
+        
+        self.test_handwriting_btn = ctk.CTkButton(
+            hyper_frame, 
+            text="✍️ Test Handwriting", 
+            fg_color="#8E44AD", 
+            hover_color="#732D91", 
+            command=self._on_test_handwriting_clicked
+        )
+        self.test_handwriting_btn.pack(fill="x", padx=10, pady=5)
+        self.test_handwriting_btn.pack_forget() # Hidden by default
+        
+        # Encoder I/O Frame (for Autoencoder mode)
+        self.encoder_io_frame = ctk.CTkFrame(hyper_frame)
+        self.encoder_io_frame.pack(fill="x", padx=10, pady=5)
+        
+        encoder_io_label = ctk.CTkLabel(self.encoder_io_frame, text="💾 Encoder I/O", font=ctk.CTkFont(size=12, weight="bold"))
+        encoder_io_label.pack(pady=2)
+        
+        encoder_io_btn_frame = ctk.CTkFrame(self.encoder_io_frame)
+        encoder_io_btn_frame.pack(fill="x", padx=2, pady=2)
+        
+        self.save_encoder_btn = ctk.CTkButton(encoder_io_btn_frame, text="Save Encoder", width=80, command=self._on_save_encoder_clicked)
+        self.save_encoder_btn.pack(side="left", padx=5, expand=True)
+        
+        self.load_encoder_btn = ctk.CTkButton(encoder_io_btn_frame, text="Load Encoder", width=80, command=self._on_load_encoder_clicked)
+        self.load_encoder_btn.pack(side="right", padx=5, expand=True)
+        
+        self.encoder_io_frame.pack_forget()  # Hidden by default
+        
         control_frame = ctk.CTkFrame(hyper_frame)
         control_frame.pack(fill="x", padx=10, pady=10)
         
@@ -520,17 +520,12 @@ class ControlPanel(ctk.CTkFrame):
         self.train_btn.pack(pady=5, padx=10, fill="x")
         
         self.stop_btn = ctk.CTkButton(control_frame, text="⏹️ STOP TRAINING", command=self._on_stop_training_clicked, fg_color="#E74C3C", hover_color="#C0392B", font=ctk.CTkFont(size=14, weight="bold"))
-        # Initially hidden (packed only during training)
         
-        # status label
         self.status_label = ctk.CTkLabel(control_frame, text="Ready", font=ctk.CTkFont(size=12))
         self.status_label.pack(pady=5)
         
-        # Set initial visibility based on default model type
         self._on_model_changed(self.model_menu.get())
-        # Set initial visibility for stopping criteria
         self._on_stopping_criteria_changed()
-        # Apply initial hyperparameter presets for default task/model
         self._apply_default_hyperparams()
     
     def _on_add_class_clicked(self):
@@ -552,6 +547,26 @@ class ControlPanel(ctk.CTkFrame):
     def _on_stop_training_clicked(self):
         if self.on_stop_training:
             self.on_stop_training()
+
+    def _on_save_clicked(self):
+        if self.on_save_model:
+            self.on_save_model()
+            
+    def _on_load_clicked(self):
+        if self.on_load_model:
+            self.on_load_model()
+            
+    def _on_test_handwriting_clicked(self):
+        if self.on_test_handwriting:
+            self.on_test_handwriting()
+    
+    def _on_save_encoder_clicked(self):
+        if hasattr(self, 'on_save_encoder') and self.on_save_encoder:
+            self.on_save_encoder()
+    
+    def _on_load_encoder_clicked(self):
+        if hasattr(self, 'on_load_encoder') and self.on_load_encoder:
+            self.on_load_encoder()
 
     def _on_xor_clicked(self):
         if self.on_generate_xor: self.on_generate_xor()
@@ -584,49 +599,35 @@ class ControlPanel(ctk.CTkFrame):
             self.on_dataset_changed_callback(choice)
     
     def _on_task_changed(self, choice):
-        """Handle task switching (Classification vs Regression)."""
         is_regression = (choice == "Regression")
         
-        # Update visibility (handles toggling based on model/dataset too)
         self._update_preset_visibility()
         
-        # If regression...
-        
-        # Regression: Disable class management, force single output
         if is_regression:
-            # Hide/disable class buttons for single-layer regression
             self.add_class_btn.pack_forget()
             self.remove_class_btn.pack_forget()
             self.class_label.configure(text="📊 Output")
             
-            # DON'T delete classes - just hide UI
-            # This preserves class data when switching back to classification
-            
-            # Update radio to show "Output" instead of "Class 0"
             for i, radio in enumerate(self.class_radio_buttons):
                 if i == 0:
                     radio.configure(text="  Continuous Output")
                 else:
-                    radio.pack_forget()  # Hide extra classes
+                    radio.pack_forget()
             
-            # Auto-select linear activation for regression
             self.activation_output_var.set("linear")
             
-            # Fix layer architecture: Last value should be 1 for regression
             if hasattr(self, 'architecture_entry'):
                 try:
                     arch_str = self.architecture_entry.get()
                     arch = [int(x.strip()) for x in arch_str.split(',')]
                     if len(arch) >= 2 and arch[-1] != 1:
-                        # Change last value to 1
                         arch[-1] = 1
                         new_arch_str = ','.join(map(str, arch))
                         self.architecture_entry.delete(0, 'end')
                         self.architecture_entry.insert(0, new_arch_str)
                 except:
-                    pass  # Invalid format, will be handled by get_architecture
+                    pass
         
-        # Classification: Show class management
         else:
             self.add_class_btn.pack(side="left", padx=5)
             self.remove_class_btn.pack(side="left", padx=5)
@@ -634,28 +635,21 @@ class ControlPanel(ctk.CTkFrame):
             self.remove_class_btn.configure(text="- Class")
             self.class_label.configure(text="🎨 Class Management")
             
-            # Update radio texts to "Class X" and restore visibility
             for i, radio in enumerate(self.class_radio_buttons):
                 radio.configure(text=f"  Class {i}")
-                # Restore visibility for hidden radios
                 radio.pack(anchor="w", padx=10, pady=2)
             
-            # Reset selected class to first class (important after regression mode)
             if len(self.class_radio_buttons) > 0:
                 self.selected_class.set(0)
             
-            # Auto-select softmax for classification
             self.activation_output_var.set("softmax")
             
-        # Re-apply hyperparameter presets when task changes
         self._apply_default_hyperparams()
         
-        # Notify callback about task change
         if self.on_task_changed_callback:
             self.on_task_changed_callback(choice)
 
     def _on_stopping_criteria_changed(self):
-        """Show/hide stopping criteria inputs based on selection."""
         if self.stopping_criteria.get() == "epochs":
             self.epochs_frame.pack(fill="x", padx=10, pady=2)
             self.min_error_frame.pack_forget()
@@ -664,7 +658,6 @@ class ControlPanel(ctk.CTkFrame):
             self.min_error_frame.pack(fill="x", padx=10, pady=2)
 
     def _on_ae_stopping_changed(self, choice):
-        """Show/hide AE stopping criteria inputs."""
         if choice == "epochs":
             self.ae_epochs_frame.pack(fill="x", padx=10, pady=2, after=self.ae_stopping_switch.master)
             self.ae_min_error_frame.pack_forget()
@@ -673,27 +666,23 @@ class ControlPanel(ctk.CTkFrame):
             self.ae_min_error_frame.pack(fill="x", padx=10, pady=2, after=self.ae_stopping_switch.master)
 
     def _on_model_changed(self, choice):
-        """Show/hide model-specific parameters based on selection."""
         if "Autoencoder-Based MLP" in choice:
-            # Autoencoder-MLP: Show MLP + Autoencoder parameters
             self.architecture_frame.pack(fill="x", padx=10, pady=2)
             self.activation_hidden_frame.pack(fill="x", padx=10, pady=2)
             self.activation_output_frame.pack(fill="x", padx=10, pady=2)
             self.batch_frame.pack(fill="x", padx=10, pady=2)
             self.l2_frame.pack(fill="x", padx=10, pady=2)
             self.momentum_frame.pack(fill="x", padx=10, pady=2)
-            self.autoencoder_frame.pack(fill="x", padx=10, pady=5)  # Show AE params
+            self.autoencoder_frame.pack(fill="x", padx=10, pady=5)
         elif "Multi-Layer" in choice:
-            # MLP: Show all MLP parameters, hide AE
             self.architecture_frame.pack(fill="x", padx=10, pady=2)
             self.activation_hidden_frame.pack(fill="x", padx=10, pady=2)
             self.activation_output_frame.pack(fill="x", padx=10, pady=2)
             self.batch_frame.pack(fill="x", padx=10, pady=2)
             self.l2_frame.pack(fill="x", padx=10, pady=2)
             self.momentum_frame.pack(fill="x", padx=10, pady=2)
-            self.autoencoder_frame.pack_forget()  # Hide AE params
+            self.autoencoder_frame.pack_forget()
         else:
-            # Single-Layer (Perceptron/Delta Rule): Hide MLP-only and AE parameters
             self.architecture_frame.pack_forget()
             self.activation_hidden_frame.pack_forget()
             self.activation_output_frame.pack_forget()
@@ -702,33 +691,61 @@ class ControlPanel(ctk.CTkFrame):
             self.momentum_frame.pack_forget()
             self.autoencoder_frame.pack_forget()
         
-        # Apply presets whenever model changes
         self._apply_default_hyperparams()
         
-        # Update preset visibility based on model choice
         self._update_preset_visibility()
 
-        # If in MNIST mode and model changed, update tabs
         if hasattr(self, 'on_model_changed_mnist_callback'):
             if self.on_model_changed_mnist_callback:
                 self.on_model_changed_mnist_callback()
 
     def _update_preset_visibility(self):
-        """Show presets only for MLP model in Manual mode."""
         model = self.get_model_type()
         dataset = self.get_dataset_mode()
         task = self.get_task_type()
         
-        # Determine if we should show any presets
-        # User requested: "sadece mimariyi manuel modda mlp secince gozuksun"
-        # Translation: "Only show when MLP is selected in Manual mode"
         should_show = (model == 'MLP') and (dataset == 'manual')
+        
+        if dataset == 'mnist':
+            if hasattr(self, 'test_split_frame'):
+                self.test_split_frame.pack_forget()
+            
+            # Only show Test Handwriting and Model I/O for standard MLP (not Autoencoder)
+            if model == 'MLP':
+                if hasattr(self, 'test_handwriting_btn'):
+                    self.test_handwriting_btn.pack(fill="x", padx=10, pady=5)
+                if hasattr(self, 'model_io_frame'):
+                    self.model_io_frame.pack(fill="x", padx=10, pady=5)
+                if hasattr(self, 'encoder_io_frame'):
+                    self.encoder_io_frame.pack_forget()
+            elif model == 'AutoencoderMLP':
+                if hasattr(self, 'test_handwriting_btn'):
+                    self.test_handwriting_btn.pack_forget()
+                if hasattr(self, 'model_io_frame'):
+                    self.model_io_frame.pack_forget()
+                if hasattr(self, 'encoder_io_frame'):
+                    self.encoder_io_frame.pack(fill="x", padx=10, pady=5)
+            else:
+                if hasattr(self, 'test_handwriting_btn'):
+                    self.test_handwriting_btn.pack_forget()
+                if hasattr(self, 'model_io_frame'):
+                    self.model_io_frame.pack_forget()
+                if hasattr(self, 'encoder_io_frame'):
+                    self.encoder_io_frame.pack_forget()
+        else:
+            if hasattr(self, 'test_handwriting_btn'):
+                self.test_handwriting_btn.pack_forget()
+            if hasattr(self, 'model_io_frame'):
+                self.model_io_frame.pack_forget()
+            if hasattr(self, 'encoder_io_frame'):
+                self.encoder_io_frame.pack_forget()
+            if hasattr(self, 'test_split_frame'):
+                self.test_split_frame.pack(fill="x", padx=10, pady=2)
         
         if not should_show:
             self.preset_classification_frame.pack_forget()
             self.preset_regression_frame.pack_forget()
         else:
-            # If we should show, decide which one based on task
             if task == 'regression':
                 self.preset_classification_frame.pack_forget()
                 self.preset_regression_frame.pack(fill="x", padx=5, pady=5, after=self.class_radio_frame)
@@ -737,14 +754,12 @@ class ControlPanel(ctk.CTkFrame):
                 self.preset_classification_frame.pack(fill="x", padx=5, pady=5, after=self.class_radio_frame)
 
     def _apply_default_hyperparams(self):
-        """Apply model- and task-specific default hyperparameters from config file."""
         from config.default_hyperparams import get_defaults
         
         task = self.get_task_type()
         model = self.get_model_type()
         dataset_mode = self.get_dataset_mode()
         
-        # Helper to safely set an entry widget
         def set_entry(entry, value):
             try:
                 entry.delete(0, 'end')
@@ -752,22 +767,22 @@ class ControlPanel(ctk.CTkFrame):
             except Exception:
                 pass
         
-        # Get defaults from config file
         try:
             defaults = get_defaults(model, task, dataset_mode)
         except Exception as e:
             print(f"Warning: Could not load defaults from config: {e}")
             return
         
-        # Apply basic hyperparameters (all models)
         if 'learning_rate' in defaults:
             set_entry(self.learning_rate_entry, defaults['learning_rate'])
         if 'epochs' in defaults:
             set_entry(self.epochs_entry, defaults['epochs'])
         if 'min_error' in defaults:
             set_entry(self.min_error_entry, defaults['min_error'])
+        if 'stopping_criteria' in defaults:
+            self.stopping_criteria.set(defaults['stopping_criteria'])
+            self._on_stopping_criteria_changed()
         
-        # MLP and AutoencoderMLP specific parameters
         if model in ['MLP', 'AutoencoderMLP']:
             if 'architecture' in defaults and hasattr(self, 'architecture_entry'):
                 set_entry(self.architecture_entry, defaults['architecture'])
@@ -780,12 +795,10 @@ class ControlPanel(ctk.CTkFrame):
             if 'l2_lambda' in defaults:
                 set_entry(self.l2_entry, defaults['l2_lambda'])
             if 'use_momentum' in defaults:
-                # Set checkbox value directly from config
                 self.use_momentum_var.set(defaults['use_momentum'])
             if 'momentum_factor' in defaults:
                 set_entry(self.momentum_entry, defaults['momentum_factor'])
         
-        # AutoencoderMLP specific parameters
         if model == 'AutoencoderMLP':
             if 'encoder_architecture' in defaults and hasattr(self, 'encoder_architecture_entry'):
                 set_entry(self.encoder_architecture_entry, defaults['encoder_architecture'])
@@ -798,19 +811,17 @@ class ControlPanel(ctk.CTkFrame):
 
             if 'ae_min_error' in defaults and hasattr(self, 'ae_min_error_entry'):
                 set_entry(self.ae_min_error_entry, defaults['ae_min_error'])
+
             if 'freeze_encoder' in defaults and hasattr(self, 'freeze_encoder_var'):
                 self.freeze_encoder_var.set(defaults['freeze_encoder'])
             if 'recon_samples' in defaults and hasattr(self, 'recon_samples_entry'):
                 set_entry(self.recon_samples_entry, defaults['recon_samples'])  
 
     def update_class_radios(self, classes, colors):
-        """Recreate radio buttons when classes change."""
-        # clear old
         for widget in self.class_radio_frame.winfo_children():
             widget.destroy()
         self.class_radio_buttons = []
         
-        # create new
         if len(classes) > 0:
             for i, (class_name, color) in enumerate(zip(classes, colors)):
                 radio = ctk.CTkRadioButton(
@@ -826,7 +837,6 @@ class ControlPanel(ctk.CTkFrame):
             self.selected_class.set(0)
         
         elif self.get_task_type() == 'regression':
-            # Create single radio for regression even if classes list is empty
             from config import COLOR_PALETTE
             color = COLOR_PALETTE[0] if len(colors) > 0 else "#1F6AA5"
             radio = ctk.CTkRadioButton(
@@ -855,13 +865,6 @@ class ControlPanel(ctk.CTkFrame):
         else:
             return "MLP"
     
-    def get_activation_functions(self):
-        try:
-            hidden_activation = self.activation_hidden_var.get()
-            output_activation = self.activation_output_var.get()
-            return [hidden_activation, output_activation]
-        except:
-            return ['relu', 'softmax']
     
     def get_task_type(self):
         return self.task_type.get().lower()
@@ -884,29 +887,20 @@ class ControlPanel(ctk.CTkFrame):
             self.clear_btn.configure(state="disabled")
 
     def apply_mnist_mode(self):
-        """Configure UI for MNIST dataset mode (classification + MLP only)."""
-        # Hide class management frame entirely (MNIST has fixed 10 classes)
         self.class_management_frame.pack_forget()
 
-        # Force classification task and disable task switching
         self.task_type.set("Classification")
         self.task_switch.configure(state="disabled")
-        # Reset task-dependent UI
         self._on_task_changed("Classification")
 
-        # Restrict model selection to MLP and Autoencoder-MLP only
         self.model_menu.configure(values=["Multi-Layer (MLP)", "Autoencoder-Based MLP"])
         self.model_type.set("Multi-Layer (MLP)")
-        # Apply model-specific UI changes
         self._on_model_changed("Multi-Layer (MLP)")
 
-        # Apply MNIST-specific hyperparameter presets from config
         try:
             from config.default_hyperparams import get_defaults
-            # Get MNIST defaults for MLP (base model for MNIST mode)
             defaults = get_defaults('MLP', dataset_mode='mnist')
             
-            # Helper to safely set an entry widget
             def set_entry(entry, value):
                 try:
                     entry.delete(0, 'end')
@@ -917,11 +911,9 @@ class ControlPanel(ctk.CTkFrame):
             if 'learning_rate' in defaults:
                 set_entry(self.learning_rate_entry, defaults['learning_rate'])
             
-            # Test split
             if 'test_split' in defaults:
                 set_entry(self.test_split_entry, defaults['test_split'])
 
-            # Stopping criteria
             self.stopping_criteria.set("epochs")
             self._on_stopping_criteria_changed()
             if 'epochs' in defaults:
@@ -953,20 +945,13 @@ class ControlPanel(ctk.CTkFrame):
             print(f"Warning: Could not load defaults for MNIST mode: {e}")
 
     def apply_manual_mode(self):
-        """Restore UI settings for manual dataset mode."""
-        # Show class management frame
         self.class_management_frame.pack(fill="x", padx=10, pady=5, before=self.model_menu.master)
         
-        # Re-enable class management buttons
         self.add_class_btn.configure(state="normal")
         self.remove_class_btn.configure(state="normal")
 
-        # Re-enable task switching
         self.task_switch.configure(state="normal")
 
-        # Restore full model list (no Autoencoder-MLP in manual mode)
         self.model_menu.configure(values=["Single-Layer (Perceptron)", "Single-Layer (Delta Rule)", "Multi-Layer (MLP)"])
         
-        # Reset hyperparameters to manual mode defaults
-        # This ensures MNIST values don't persist when switching back
         self._apply_default_hyperparams()

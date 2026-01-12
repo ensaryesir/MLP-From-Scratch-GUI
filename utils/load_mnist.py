@@ -1,100 +1,49 @@
-"""MNIST dataset loader and helpers for MLP training.
-
-This module is independent from the GUI click-based data handler.
-It reads the raw IDX files from the local dataset/MNIST directory and
-returns flattened, normalized inputs suitable for the MLP implementation
-in this project.
-"""
-
 import struct
-from array import array
-from os.path import dirname, join
-from typing import List, Tuple
-
+import numpy as np
+import sys
+from os.path import dirname, join, abspath
+from typing import Tuple
 
 def _project_root() -> str:
-    """Return absolute path to project root (folder containing this repo)."""
-    # utils/ -> project root is one level above
-    return dirname(dirname(__file__))
-
+    """Get project root - works for both script and exe"""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled exe
+        return dirname(sys.executable)
+    else:
+        # Running as script
+        return dirname(dirname(abspath(__file__)))
 
 def _mnist_base_dir() -> str:
-    """Return absolute path to dataset/MNIST directory."""
     return join(_project_root(), "dataset", "MNIST")
-
 
 def _read_idx_images_labels(
     images_filepath: str,
     labels_filepath: str,
-) -> Tuple[List[List[float]], List[int]]:
-    """Read MNIST IDX image/label files and return flattened, normalized data.
-
-    Returns
-    -------
-    images : List[List[float]]
-        Each image is a list of 784 floats in [0, 1].
-    labels : List[int]
-        Integer class labels 0-9.
-    """
-    # Read labels
+) -> Tuple[np.ndarray, np.ndarray]:
     with open(labels_filepath, "rb") as f:
         magic, size = struct.unpack(">II", f.read(8))
         if magic != 2049:
             raise ValueError(f"Invalid magic number for labels: {magic} (expected 2049)")
-        labels_raw = array("B", f.read())
+        labels = np.frombuffer(f.read(), dtype=np.uint8)
 
-    # Read images
     with open(images_filepath, "rb") as f:
         magic, size_img, rows, cols = struct.unpack(">IIII", f.read(16))
         if magic != 2051:
             raise ValueError(f"Invalid magic number for images: {magic} (expected 2051)")
-        if size_img != len(labels_raw):
-            # Not fatal, but helpful to know
-            print(
-                f"Warning: number of images ({size_img}) and labels ({len(labels_raw)}) differ."
-            )
-        image_data = array("B", f.read())
-
-    images: List[List[float]] = []
-    labels: List[int] = []
-    pixels_per_image = rows * cols
-
-    for i in range(len(labels_raw)):
-        start = i * pixels_per_image
-        end = start + pixels_per_image
-        # Normalize to [0, 1]
-        pixels = [p / 255.0 for p in image_data[start:end]]
-        images.append(pixels)
-        labels.append(int(labels_raw[i]))
+        
+        image_data = np.frombuffer(f.read(), dtype=np.uint8)
+        
+    images = image_data.reshape(size_img, rows * cols).astype(np.float32) / 255.0
 
     return images, labels
-
 
 def load_mnist_dataset(
     limit_train: int | None = None,
     limit_test: int | None = None,
     per_class_train: int | None = None,
     per_class_test: int | None = None,
-) -> Tuple[Tuple[List[List[float]], List[int]], Tuple[List[List[float]], List[int]]]:
-    """Load MNIST train and test sets from dataset/MNIST.
-
-    Parameters
-    ----------
-    limit_train : Optional[int]
-        If provided, truncate training set to this many samples.
-    limit_test : Optional[int]
-        If provided, truncate test set to this many samples.
-    per_class_train : Optional[int]
-        If provided, take at most this many samples per digit (0-9) for training.
-    per_class_test : Optional[int]
-        If provided, take at most this many samples per digit (0-9) for test.
-
-    Returns
-    -------
-    (X_train, y_train), (X_test, y_test)
-        X_* are lists of flattened images (length 784),
-        y_* are integer labels 0-9.
-    """
+) -> Tuple[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
+    
     base_dir = _mnist_base_dir()
 
     train_images = join(base_dir, "train-images-idx3-ubyte", "train-images-idx3-ubyte")
@@ -105,38 +54,35 @@ def load_mnist_dataset(
     X_train, y_train = _read_idx_images_labels(train_images, train_labels)
     X_test, y_test = _read_idx_images_labels(test_images, test_labels)
 
-    # Class-balanced subsampling if requested
-    if per_class_train is not None:
+    def subsample_balanced(X, y, limit_per_class):
+        if limit_per_class is None:
+            return X, y
+        
+        indices = []
         counts = {d: 0 for d in range(10)}
-        X_bal: List[List[float]] = []
-        y_bal: List[int] = []
-        for x, y in zip(X_train, y_train):
-            if counts.get(y, 0) < per_class_train:
-                X_bal.append(x)
-                y_bal.append(y)
-                counts[y] = counts.get(y, 0) + 1
-            # Early exit if all classes reached per_class_train
-            if all(counts[d] >= per_class_train for d in range(10)):
+        
+        for i, label in enumerate(y):
+            if counts[label] < limit_per_class:
+                indices.append(i)
+                counts[label] += 1
+            if all(c >= limit_per_class for c in counts.values()):
                 break
-        X_train, y_train = X_bal, y_bal
-    elif limit_train is not None:
-        X_train = X_train[:limit_train]
-        y_train = y_train[:limit_train]
+                
+        return X[indices], y[indices]
 
+    def subsample_limit(X, y, limit):
+        if limit is None:
+            return X, y
+        return X[:limit], y[:limit]
+
+    if per_class_train is not None:
+        X_train, y_train = subsample_balanced(X_train, y_train, per_class_train)
+    else:
+        X_train, y_train = subsample_limit(X_train, y_train, limit_train)
+        
     if per_class_test is not None:
-        counts_t = {d: 0 for d in range(10)}
-        X_bal_t: List[List[float]] = []
-        y_bal_t: List[int] = []
-        for x, y in zip(X_test, y_test):
-            if counts_t.get(y, 0) < per_class_test:
-                X_bal_t.append(x)
-                y_bal_t.append(y)
-                counts_t[y] = counts_t.get(y, 0) + 1
-            if all(counts_t[d] >= per_class_test for d in range(10)):
-                break
-        X_test, y_test = X_bal_t, y_bal_t
-    elif limit_test is not None:
-        X_test = X_test[:limit_test]
-        y_test = y_test[:limit_test]
+        X_test, y_test = subsample_balanced(X_test, y_test, per_class_test)
+    else:
+        X_test, y_test = subsample_limit(X_test, y_test, limit_test)
 
     return (X_train, y_train), (X_test, y_test)

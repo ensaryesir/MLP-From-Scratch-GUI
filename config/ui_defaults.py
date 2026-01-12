@@ -1,10 +1,3 @@
-"""
-UI/Visualization Configuration Defaults
-=======================================
-
-Centralized color palettes and visual settings.
-"""
-
 # Standard color palette for classification classes
 # Used in DataHandler and VisualizationFrame
 COLOR_PALETTE = [
