@@ -1,72 +1,75 @@
-"""
-Neural Network Visualizer - Main Application
-Interactive GUI for training and visualizing neural networks from scratch.
-"""
-
 import customtkinter as ctk
-from tkinter import messagebox
-import threading
+from tkinter import messagebox, filedialog
 import queue
+import numpy as np
+import pickle
+import sys
+import os
 
 from utils.data_handler import DataHandler
-from algorithms.single_layer import Perceptron, DeltaRule
-from algorithms.mlp import MLP
-from algorithms.autoencoder import Autoencoder
-from algorithms.mlp_with_encoder import MLPWithEncoder
 from utils.load_mnist import load_mnist_dataset
 from gui.control_panel import ControlPanel
 from gui.visualization_frames import VisualizationFrame
+from gui.training_manager import TrainingManager
+from gui.handwriting_tester import HandwritingTester
+
+
+def get_app_dir():
+    """Get application directory - works for both script and exe"""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled exe
+        return os.path.dirname(sys.executable)
+    else:
+        # Running as script
+        return os.path.dirname(os.path.abspath(__file__))
+
+
+# Create weights directory if it doesn't exist
+WEIGHTS_DIR = os.path.join(get_app_dir(), 'weights')
+os.makedirs(WEIGHTS_DIR, exist_ok=True)
 
 
 class NeuralNetworkVisualizer(ctk.CTk):
-    """Main application orchestrating GUI, algorithms, and visualization."""
-
     def __init__(self):
         super().__init__()
 
-        # window config
         self.title("🧠 Neural Network Visualizer - MLP From Scratch")
         self.geometry("1400x800")
 
-        # theme
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
         
-        # data handler
-        self.dataset_mode = 'manual'  # 'manual' or 'mnist'
+        self.dataset_mode = 'manual'
         self.data_handler = DataHandler()
         self.data_handler.add_class("Class 0")
         self.data_handler.add_class("Class 1")
         
-        # training state
         self.is_training = False
-        self.stop_requested = False  # Flag to interrupt training
+        self.stop_requested = False
         self.trained_model = None
-        self.trained_autoencoder = None  # NEW: Store trained autoencoder
+        self.trained_autoencoder = None
+        self.handwriting_window = None
         
-        # Threading for non-blocking training
-        self.training_queue = queue.Queue()  # Thread-safe communication
-        self.training_thread = None
+        self.training_manager = TrainingManager(
+            update_callback=None,
+            completion_callback=None,
+            error_callback=None
+        )
         
-        # setup UI
         self._setup_ui()
         self._update_class_radios()
     
     def _setup_ui(self):
-        """Setup two-panel layout: visualization (left) and controls (right)."""
-        # grid layout
         self.grid_columnconfigure(0, weight=3)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
         
-        # visualization frame (left)
         self.visualization_frame = VisualizationFrame(
             self,
             on_point_added_callback=self._on_point_added
         )
         self.visualization_frame.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
         
-        # control panel (right)
         self.control_panel = ControlPanel(
             self,
             on_add_class=self._on_add_class,
@@ -74,6 +77,11 @@ class NeuralNetworkVisualizer(ctk.CTk):
             on_clear_data=self._on_clear_data,
             on_start_training=self._on_start_training,
             on_stop_training=self._on_stop_training,
+            on_save_model=self._on_save_model,
+            on_load_model=self._on_load_model,
+            on_test_handwriting=self._on_test_handwriting,
+            on_save_encoder=self._on_save_encoder,
+            on_load_encoder=self._on_load_encoder,
             on_task_changed_callback=self._on_task_changed,
             on_dataset_changed_callback=self._on_dataset_changed,
             on_generate_xor=self._on_generate_xor,
@@ -87,13 +95,9 @@ class NeuralNetworkVisualizer(ctk.CTk):
         )
         self.control_panel.grid(row=0, column=1, sticky="nsew", padx=(5, 10), pady=10)
         
-        # Set callback for model changes in MNIST mode
         self.control_panel.on_model_changed_mnist_callback = self._on_model_changed_mnist
     
-    # Event Handlers
     def _on_point_added(self, x, y):
-        """Add data point on mouse click."""
-        # Prevent adding points during training
         if self.is_training:
             return
         
@@ -102,7 +106,6 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.visualization_frame.update_train_view(self.data_handler)
     
     def _on_add_class(self):
-        """Add a new class (max 6)."""
         if self.data_handler.get_num_classes() >= 6:
             messagebox.showwarning("Warning", "Maximum 6 classes allowed.")
             return
@@ -113,7 +116,6 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.visualization_frame.update_train_view(self.data_handler)
     
     def _on_remove_class(self):
-        """Remove last class (min 2)."""
         if self.data_handler.get_num_classes() <= 2:
             messagebox.showwarning("Warning", "Minimum 2 classes required.")
             return
@@ -123,7 +125,6 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.visualization_frame.update_train_view(self.data_handler)
     
     def _on_clear_data(self):
-        """Clear all data points after confirmation."""
         response = messagebox.askyesno("Confirm", "Are you sure you want to clear all data points?")
         if response:
             self.data_handler.clear_data()
@@ -133,52 +134,32 @@ class NeuralNetworkVisualizer(ctk.CTk):
             self.control_panel.set_status("Data cleared")
     
     def _on_task_changed(self, task_choice):
-        """Handle task type changes (Classification/Regression)."""
-        # Update visualization frame's task mode
         task = 'regression' if task_choice == 'Regression' else 'classification'
         self.visualization_frame.current_task = task
-        
-        # Refresh visualization to show correct point colors
         self.visualization_frame.update_train_view(self.data_handler)
     
     def _on_dataset_changed(self, dataset_choice):
-        """Handle dataset source switching (Manual vs MNIST)."""
         mode = 'mnist' if dataset_choice == 'MNIST' else 'manual'
         self.dataset_mode = mode
 
         if mode == 'mnist':
-            # Disable manual point adding when using MNIST
             self.visualization_frame.enable_clicking(False)
             self.control_panel.set_status("MNIST mode: using dataset/MNIST, click disabled.")
-            # Get current model type
             model_type = self.control_panel.get_model_type()
-            # Reconfigure tabs for MNIST (model type determines if reconstruction/latent tabs shown)
             self.visualization_frame.configure_for_dataset_mode('mnist', model_type)
-            # Delegate detailed UI configuration to control panel
             self.control_panel.apply_mnist_mode()
         else:
-            # Re-enable manual interaction
             self.visualization_frame.enable_clicking(True)
             self.control_panel.set_status("Manual mode: click to add training points.")
-            # Reconfigure tabs for Manual (show Training/Test, hide Reconstruction/Latent)
             self.visualization_frame.configure_for_dataset_mode('manual')
-            # Delegate manual mode UI restoration
             self.control_panel.apply_manual_mode()
     
     def _on_model_changed_mnist(self):
-        """Handle model changes in MNIST mode - update tabs."""
         if self.dataset_mode == 'mnist':
             model_type = self.control_panel.get_model_type()
-            # Force tab reconfiguration (even if mode hasn't changed)
-            self.visualization_frame.current_dataset_mode = None  # Force refresh
             self.visualization_frame.configure_for_dataset_mode('mnist', model_type)
-    
-        if self.control_panel.get_task_type() == 'regression':
-             # For regression, we might want to plot the points differently or just as single class
-             pass
         self.visualization_frame.update_train_view(self.data_handler)
 
-    # Classification Presets
     def _on_generate_xor(self):
         if self.is_training: return
         self.data_handler.generate_xor()
@@ -199,7 +180,6 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.data_handler.generate_blobs()
         self._on_preset_generated()
 
-    # Regression Presets
     def _on_generate_sine(self):
         if self.is_training: return
         self.data_handler.generate_sine()
@@ -219,10 +199,8 @@ class NeuralNetworkVisualizer(ctk.CTk):
         if self.is_training: return
         self.data_handler.generate_abs()
         self._on_preset_generated()
-        self._on_preset_generated()
 
     def _on_preset_generated(self):
-        """Common update logic after preset generation."""
         self.control_panel.update_class_radios(
             self.data_handler.classes, 
             self.data_handler.colors
@@ -230,66 +208,56 @@ class NeuralNetworkVisualizer(ctk.CTk):
         self.visualization_frame.update_train_view(self.data_handler)
 
     def _on_start_training(self):
-        """Initialize and start training process."""
         if self.is_training:
             messagebox.showinfo("Info", "Training already in progress.")
             return
         
-        # For manual mode, require some points; MNIST mode provides its own data
-        if getattr(self, 'dataset_mode', 'manual') == 'manual':
-            if self.data_handler.get_num_points() < 10:
-                messagebox.showwarning("Warning", "Please add at least 10 data points.")
-                return
-        
-        # prepare training
         self.is_training = True
         self.stop_requested = False
         self.control_panel.enable_training(False)
         self.control_panel.set_status("Initializing training...")
-        # Clear appropriate loss history based on model type
+        
         model_type = self.control_panel.get_model_type()
         if model_type == 'AutoencoderMLP':
             self.visualization_frame.clear_loss_history('Autoencoder')
             self.visualization_frame.clear_loss_history('AutoencoderMLP')
         else:
             self.visualization_frame.clear_loss_history()
-        # Disable clicking during training
+            
         self.visualization_frame.enable_clicking(False)
         
-        # For MNIST, switch to error graph tab (training/test tabs are empty for high-D data)
         if getattr(self, 'dataset_mode', 'manual') == 'mnist':
             if model_type == 'AutoencoderMLP':
                 self.visualization_frame.switch_to_tab('ae_loss')
             else:
                 self.visualization_frame.switch_to_tab('loss')
+                
+        learning_rate = self.control_panel.inputs.get_learning_rate()
+        stopping_criteria, max_epochs, min_error = self.control_panel.inputs.get_stopping_criteria()
+        batch_size = self.control_panel.inputs.get_batch_size()
+        test_split = self.control_panel.inputs.get_test_split()
+        task = self.control_panel.get_task_type()
+        epochs = max_epochs
+
+        if getattr(self, 'dataset_mode', 'manual') == 'mnist':
+            (X_train, y_train), (X_test, y_test) = load_mnist_dataset(
+                per_class_train=100,
+                per_class_test=10
+            )
+            task = 'classification'
+        else:
+            X_train, X_test, y_train, y_test = self.data_handler.get_train_test_split(
+                test_ratio=test_split,
+                task=task,
+            )
         
-        # 1) Collect hyperparameters from control panel
-        (
-            model_type,
-            task,
-            learning_rate,
-            stopping_criteria,
-            epochs,
-            min_error,
-            batch_size,
-            test_split,
-        ) = self._collect_hyperparameters()
-
-        # Store stopping criteria for use in training loop
-        self.stopping_criteria = stopping_criteria
-        self.min_error = min_error
-
-        # 2) Prepare dataset (manual 2D points vs MNIST images)
-        X_train, X_test, y_train, y_test, task = self._prepare_training_data(
-            task, test_split
-        )
+        self.X_train = X_train
+        self.y_train = y_train
         self.X_test = X_test
         self.y_test = y_test
         self.current_task = task
-        # Update visualization task mode (for correct point rendering)
         self.visualization_frame.current_task = task
 
-        # 3) Determine number of classes / outputs
         if getattr(self, 'dataset_mode', 'manual') == 'mnist':
             n_classes = 10
             task = 'classification'
@@ -302,254 +270,256 @@ class NeuralNetworkVisualizer(ctk.CTk):
             n_output_nodes = 1
         else:
             n_output_nodes = n_classes
+            
+        if model_type != "AutoencoderMLP":
+            if task == 'regression':
+                input_size = 1
+            else:
+                if getattr(self, 'dataset_mode', 'manual') == 'mnist':
+                    input_size = 784
+                else:
+                    input_size = 2
+                    
+            if model_type == 'MLP':
+                architecture = self.control_panel.inputs.get_architecture()
+                architecture[0] = input_size
+                architecture[-1] = n_output_nodes
+                arch_str = ','.join(map(str, architecture))
+                self.control_panel.architecture_entry.delete(0, 'end')
+                self.control_panel.architecture_entry.insert(0, arch_str)
 
-        # 4) Build model based on selected type
-        model, batch_size = self._build_model(
-            model_type=model_type,
-            learning_rate=learning_rate,
-            task=task,
-            n_output_nodes=n_output_nodes,
-            batch_size=batch_size,
+        model, batch_size = self.training_manager.build_model(
+            model_type, self.control_panel.inputs, task, n_output_nodes
         )
+        
+        if model_type == 'AutoencoderMLP':
+            self._start_autoencoder_pipeline(X_train, y_train, epochs, stopping_criteria, min_error)
+        else:
+            self.after(100, lambda: self._run_training_standard(
+                model, X_train, y_train, epochs, batch_size, stopping_criteria, min_error
+            ))
 
-        # 5) Start training asynchronously
-        self.after(
-            100,
-            lambda: self._run_training(
-                model, X_train, y_train, epochs, batch_size, stopping_criteria, min_error, model_type
-            ),
-        )
+    def _run_training_standard(self, model, X_train, y_train, epochs, batch_size, stopping_criteria, min_error):
+        self.training_manager.start_training_standard(model, X_train, y_train, epochs, batch_size, stopping_criteria, min_error)
+        self.after(100, self._poll_training_results)
+
+    def _start_autoencoder_pipeline(self, X_train, y_train, epochs, stopping_criteria, min_error):
+        encoder_dims = self.control_panel.inputs.get_encoder_architecture()
+        ae_stop_mode, ae_epochs, ae_min_error_val = self.control_panel.inputs.get_ae_stopping_config()
+        freeze_encoder = self.control_panel.inputs.get_freeze_encoder()
+        recon_samples = self.control_panel.inputs.get_recon_samples()
+        
+        learning_rate = self.control_panel.inputs.get_learning_rate()
+        use_momentum, momentum_factor = self.control_panel.inputs.get_momentum_config()
+        batch_size = self.control_panel.inputs.get_batch_size()
+        
+        num_encoder_layers = len(encoder_dims) - 1
+        encoder_activations = ['relu'] * (num_encoder_layers - 1) + ['relu']
+        decoder_activations = ['relu'] * (num_encoder_layers - 1) + ['sigmoid']
+        ae_activations = encoder_activations + decoder_activations
+        
+        self.control_panel.set_status("Stage 1/2: Training Autoencoder...")
+        self.update()
+        
+        params = {
+            'encoder_dims': encoder_dims,
+            'activations': ae_activations,
+            'learning_rate': learning_rate,
+            'use_momentum': use_momentum,
+            'momentum_factor': momentum_factor,
+            'ae_epochs': ae_epochs,
+            'ae_stop_mode': ae_stop_mode,
+            'ae_min_error': ae_min_error_val
+        }
+        
+        self.stage2_context = {
+            'X_train': X_train, 'y_train': y_train,
+            'epochs': epochs, 'batch_size': batch_size,
+            'stopping_criteria': stopping_criteria, 'min_error': min_error,
+            'encoder_dims': encoder_dims, 'freeze_encoder': freeze_encoder,
+            'recon_samples': recon_samples,
+            'learning_rate': learning_rate, 'use_momentum': use_momentum, 'momentum_factor': momentum_factor,
+            'l2_lambda': self.control_panel.inputs.get_l2_lambda(),
+            'mlp_architecture': self.control_panel.inputs.get_architecture(),
+            'mlp_activations': self.control_panel.inputs.get_activation_functions(),
+        }
+        
+        # Check if encoder is already loaded
+        if hasattr(self, 'trained_ae') and self.trained_ae:
+            self.control_panel.set_status("Using pre-loaded encoder. Skipping Stage 1...")
+            self.update()
+            self.after(100, lambda: self._start_stage2_mlp(self.trained_ae))
+        else:
+            self.after(100, lambda: self._run_training_autoencoder_deferred(params, X_train, y_train, batch_size))
+
+    def _run_training_autoencoder_deferred(self, params, X_train, y_train, batch_size):
+        self.training_manager.start_training_autoencoder(params, X_train, y_train, batch_size)
+        self.after(100, self._poll_training_results)
 
     def _on_stop_training(self):
-        """Set flag to stop training."""
+        print("DEBUG: Stop request received in main.py")
         if self.is_training:
             self.stop_requested = True
+            self.training_manager.request_stop()
             self.control_panel.set_status("Stop requested. Finishing current epoch...")
         else:
             messagebox.showinfo("Info", "No training in progress to stop.")
 
     def _finish_training(self):
-        """Common cleanup after training stops (either completed or interrupted)."""
         self.is_training = False
         self.stop_requested = False
+        self.training_manager.is_training = False
         self.control_panel.enable_training(True)
         self.visualization_frame.enable_clicking(True)
         self.control_panel.set_status("Training stopped.")
         messagebox.showinfo("Info", "Training stopped.")
 
-    def _collect_hyperparameters(self):
-        """Collect core hyperparameters from the control panel."""
-        model_type = self.control_panel.get_model_type()
-        learning_rate = self.control_panel.inputs.get_learning_rate()
-        stopping_criteria, max_epochs, min_error = self.control_panel.inputs.get_stopping_criteria()
-        batch_size = self.control_panel.inputs.get_batch_size()
-        test_split = self.control_panel.inputs.get_test_split()
-        task = self.control_panel.get_task_type()
-        epochs = max_epochs  # Use max_epochs for fit() call (limited by stopping criteria)
-
-        return (
-            model_type,
-            task,
-            learning_rate,
-            stopping_criteria,
-            epochs,
-            min_error,
-            batch_size,
-            test_split,
-        )
-
-    def _prepare_training_data(self, task, test_split):
-        """Prepare X_train, X_test, y_train, y_test based on dataset mode (no validation set)."""
-        if getattr(self, 'dataset_mode', 'manual') == 'mnist':
-            # MNIST: classification with 10 classes, 784-dim input
-            # Use a small, class-balanced subset for faster GUI training
-            # No validation set - only train and test
-            (X_train, y_train), (X_test, y_test) = load_mnist_dataset(
-                per_class_train=100,  # 100 samples per digit for training
-                per_class_test=10     # 10 samples per digit for testing
-            )
-            task = 'classification'
-        else:
-            # Manual 2D points via DataHandler
-            # Simple train/test split (no validation)
-            X_train, X_test, y_train, y_test = self.data_handler.get_train_test_split(
-                test_ratio=test_split,
-                task=task,
-            )
-
-        # No validation set stored
-        self.X_val = []
-        self.y_val = []
-        
-        return X_train, X_test, y_train, y_test, task
-
-    def _build_model(self, model_type, learning_rate, task, n_output_nodes, batch_size):
-        """Create the selected model (Perceptron, DeltaRule, or MLP)."""
-        if model_type == "Perceptron":
-            model = Perceptron(
-                learning_rate=learning_rate,
-                n_classes=n_output_nodes,
-                task=task,
-            )
-            batch_size = 1
-        elif model_type == "DeltaRule":
-            model = DeltaRule(
-                learning_rate=learning_rate,
-                n_classes=n_output_nodes,
-                task=task,
-            )
-        elif model_type == "AutoencoderMLP":
-            # Autoencoder-based MLP: Two-stage training
-            # Model will be created in _run_training_autoencoder
-            model = None
-        else:  # MLP
-            architecture = self.control_panel.inputs.get_architecture()
-            # Set input size based on task and dataset
-            if task == 'regression':
-                architecture[0] = 1  # Single feature (X coordinate)
-            else:
-                if getattr(self, 'dataset_mode', 'manual') == 'mnist':
-                    architecture[0] = 784  # Flattened 28x28 image
-                else:
-                    architecture[0] = 2  # Two features (X, Y coordinates)
-
-            architecture[-1] = n_output_nodes
-
-            # Update architecture entry to reflect changes (important for consistency)
-            arch_str = ','.join(map(str, architecture))
-            self.control_panel.architecture_entry.delete(0, 'end')
-            self.control_panel.architecture_entry.insert(0, arch_str)
-
-            activation_funcs_raw = self.control_panel.get_activation_functions()
-
-            # Expand activation functions for all layers
-            # activation_funcs_raw = [hidden_activation, output_activation]
-            # We need one activation per layer: L layers = len(architecture) - 1
-            hidden_activation = activation_funcs_raw[0]  # e.g., "relu"
-            output_activation = activation_funcs_raw[1]  # e.g., "softmax"
-
-            # Build activation list: all hidden layers use hidden_activation, last uses output_activation
-            num_layers = len(architecture) - 1
-            activation_funcs = [hidden_activation] * (num_layers - 1) + [output_activation]
-
-            l2_lambda = self.control_panel.inputs.get_l2_lambda()
-            use_momentum, momentum_factor = self.control_panel.inputs.get_momentum_config()
+    def _poll_training_results(self):
+        try:
+            queue_item = self.training_manager.training_queue.get_nowait()
+            result_type, data1, data2, data3 = queue_item
             
-            model = MLP(
-                layer_dims=architecture,
-                activation_funcs=activation_funcs,
-                learning_rate=learning_rate,
-                l2_lambda=l2_lambda,
-                task=task,
-                use_momentum=use_momentum,
-                momentum_factor=momentum_factor,
-            )
+            model = data3
+            is_autoencoder = model.__class__.__name__ == 'Autoencoder'
+            
+            if result_type == 'epoch':
+                epoch, loss = data1, data2
+                
+                if is_autoencoder:
+                    self._handle_epoch_result(epoch, loss, model)
+                else:
+                    model_type = self.control_panel.get_model_type()
+                    self.control_panel.set_status(f"Epoch {epoch} - Train Error: {loss:.4f}")
+                    self.visualization_frame.update_loss_plot(epoch, loss, model_type=model_type)
+                    
+                    if getattr(self, 'dataset_mode', 'manual') == 'manual':
+                        if epoch % 50 == 0 or epoch == 1:
+                            self.visualization_frame.update_decision_boundary(
+                                model, self.X_train, self.y_train, self.data_handler, tab_name='train', task=self.current_task
+                            )
+                
+                self.after(20, self._poll_training_results)
+                
+            elif result_type == 'converged':
+                epoch, loss = data1, data2
+                if is_autoencoder:
+                    self.control_panel.set_status(f"Stage 1 Complete! AE Converged (Loss {loss:.4f})")
+                    self.visualization_frame.update_loss_plot(epoch, loss, model_type='Autoencoder')
+                    # Save encoder and finish Stage 1
+                    self.trained_ae = model
+                    self._finish_training()
+                    messagebox.showinfo("Stage 1 Complete", 
+                                      "Autoencoder training complete!\n\n"
+                                      "You can now:\n"
+                                      "1. Save the encoder using 'Save Encoder'\n"
+                                      "2. Press 'START TRAINING' to begin MLP training (Stage 2)")
+                else:
+                    self.control_panel.set_status(f"Converged! Error {loss:.6f}")
+                    self.visualization_frame.update_loss_plot(epoch, loss, model_type=self.control_panel.get_model_type())
+                    self._on_training_completed(model)
+                
+            elif result_type == 'complete':
+                if is_autoencoder:
+                    final_loss = getattr(self, 'last_ae_loss', 0.0)
+                    self.control_panel.set_status(f"Stage 1 Complete! Final Loss: {final_loss:.6f}")
+                    # Save encoder and finish Stage 1
+                    self.trained_ae = model
+                    self._finish_training()
+                    messagebox.showinfo("Stage 1 Complete", 
+                                      "Autoencoder training complete!\n\n"
+                                      "You can now:\n"
+                                      "1. Save the encoder using 'Save Encoder'\n"
+                                      "2. Press 'START TRAINING' to begin MLP training (Stage 2)")
+                else:
+                    self._on_training_completed(model)
+                
+            elif result_type == 'stopped':
+                self.control_panel.set_status("Training interrupted.")
+                self._finish_training()
+                
+            elif result_type == 'error':
+                self.control_panel.set_status(f"Training error: {data1}")
+                self._finish_training()
+        
+        except queue.Empty:
+            if self.is_training:
+                self.after(20, self._poll_training_results)
 
+    def _handle_epoch_result(self, epoch, loss, trained_ae):
+        self.last_ae_loss = loss
+        self.control_panel.set_status(f"Stage 1/2: AE Epoch {epoch} - Recon Loss: {loss:.6f}")
+        self.visualization_frame.update_loss_plot(epoch, loss, model_type='Autoencoder')
+        self.update_idletasks()
+        
+        ctx = self.stage2_context
+        if epoch % 10 == 0:
+            try:
+                if 'X_train' in ctx:
+                    # Always show 10 samples (one per digit 0-9)
+                    num_samples = 10
+                    sample_indices = []
+                    y_train = ctx['y_train']
+                    X_train = ctx['X_train']
+                    
+                    # Try to get one sample per class (0-9)
+                    for target_class in range(num_samples):
+                        for idx, label in enumerate(y_train):
+                            if label == target_class and idx not in sample_indices:
+                                sample_indices.append(idx)
+                                break
+                    
+                    # Fill remaining slots if needed
+                    if len(sample_indices) < num_samples:
+                        remaining = num_samples - len(sample_indices)
+                        for i in range(len(X_train)):
+                            if i not in sample_indices and remaining > 0:
+                                sample_indices.append(i)
+                                remaining -= 1
+                    
+                    X_sample = [X_train[i] for i in sample_indices]
+                    X_reconstructed = trained_ae.reconstruct(X_sample)
+                    
+                    X_sample_np = np.array(X_sample)
+                    X_recon_np = np.array(X_reconstructed)
+                    mse_per_sample = np.mean((X_sample_np - X_recon_np)**2, axis=1)
+                    
+                    self.visualization_frame.update_reconstruction(X_sample, X_reconstructed, mse_per_sample)
+                    self.update_idletasks()
+            except Exception as e:
+                print(f"Reconstruction update error: {e}")
+                import traceback
+                traceback.print_exc()
 
-        return model, batch_size
-    
-    def _run_training(self, model, X_train, y_train, epochs, batch_size, stopping_criteria='epochs', min_error=0.001, model_type='MLP'):
-        """Run training loop with real-time visualization updates."""
-        
-        # Special handling for Autoencoder-based MLP
-        if model_type == 'AutoencoderMLP':
-            self._run_training_autoencoder(X_train, y_train, epochs, batch_size, stopping_criteria, min_error)
-            return
-        
-        self.current_model = model
-        self.stopping_criteria = stopping_criteria
-        self.min_error = min_error
-        
-        if isinstance(model, (Perceptron, DeltaRule)):
-            self.fit_generator = model.fit(X_train, y_train, epochs=epochs)
-        else:
-            self.fit_generator = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size)
-        
-        self._train_next_epoch(X_train, y_train, model_type)
-    
-    def _train_next_epoch(self, X_train, y_train, model_type='MLP'):
-        """Train one epoch and update visualizations (recursive async)."""
+    def _start_stage2_mlp(self, trained_ae):
         if self.stop_requested:
-            self.control_panel.set_status("Training interrupted by user.")
             self._finish_training()
             return
+            
+        self.trained_ae = trained_ae
+        ctx = self.stage2_context
+        
+        self.visualization_frame.switch_to_tab('mlp_loss')
+        self.control_panel.set_status("Stage 1 Complete. Starting Stage 2: MLP Training...")
+        
+        encoder_dims = ctx['encoder_dims']
+        latent_dim = encoder_dims[-1]
+        
+        self.training_manager.start_training_stage2(trained_ae, ctx, latent_dim)
+        self.after(100, self._poll_training_results)
 
-        try:
-            epoch, loss, model = next(self.fit_generator)
-            self.current_model = model
-            
-            self.current_model = model
-            
-            # Check stopping criteria (only using training loss)
-            should_stop = False
-            stop_reason = ""
-            
-            if self.stopping_criteria == 'error':
-                if loss <= self.min_error:
-                    should_stop = True
-                    stop_reason = f"Training Error ({loss:.6f}) <= Min Error ({self.min_error:.6f})"
-            
-            # update UI
-            if not should_stop:
-                self.control_panel.set_status(f"Epoch {epoch} - Train Error: {loss:.4f}")
-            else:
-                self.control_panel.set_status(f"Training stopped! {stop_reason}")
-
-            self.visualization_frame.update_loss_plot(epoch, loss, model_type=model_type)
-            
-            # update decision boundary every 5 epochs (manual 2D data only)
-            if getattr(self, 'dataset_mode', 'manual') == 'manual':
-                if epoch % 5 == 0 or epoch == 1:
-                    self.visualization_frame.update_decision_boundary(
-                        model, X_train, y_train, self.data_handler, tab_name='train', task=self.current_task
-                    )
-            
-            # Stop if criteria met
-            if should_stop:
-                if getattr(self, 'dataset_mode', 'manual') == 'manual':
-                    self.visualization_frame.update_decision_boundary(
-                        self.current_model, X_train, y_train, self.data_handler, tab_name='train', task=self.current_task
-                    )
-                self._on_training_completed(self.current_model)
-                return
-            
-            self.update_idletasks()
-            self.after(50, lambda: self._train_next_epoch(X_train, y_train, model_type))
-
-            
-        except StopIteration:
-            # training complete (max epochs reached)
-            if getattr(self, 'dataset_mode', 'manual') == 'manual':
-                self.visualization_frame.update_decision_boundary(
-                    self.current_model, X_train, y_train, self.data_handler, tab_name='train', task=self.current_task
-                )
-            self._on_training_completed(self.current_model)
-    
     def _on_training_completed(self, model):
-        """Handle training completion and evaluate on test set."""
         self.is_training = False
         self.trained_model = model
+        self.training_manager.is_training = False
         self.control_panel.enable_training(True)
-        # Re-enable clicking after training
         self.visualization_frame.enable_clicking(True)
         
-        # Check for stop request
         if self.stop_requested:
             self.control_panel.set_status("Training interrupted by user.")
             self._finish_training()
             return
 
-        # Debug: Test model predictions
-        if self.current_task == 'regression':
-            test_points = [[0.0], [5.0], [10.0]]
-            test_pred = model.predict(test_points)
-            print(f"\n🔍 DEBUG - Model Predictions:")
-            print(f"  Input X values: {[p[0] for p in test_points]}")
-            print(f"  Predicted Y values: {test_pred}")
-        
-        # Evaluate on test set only (no validation)
         if hasattr(self, 'X_test') and len(self.X_test) > 0:
-            # Only draw 2D decision boundary for manual dataset
             if getattr(self, 'dataset_mode', 'manual') == 'manual':
                 self.visualization_frame.update_decision_boundary(
                     model, self.X_test, self.y_test, self.data_handler, tab_name='test', task=self.current_task
@@ -557,53 +527,20 @@ class NeuralNetworkVisualizer(ctk.CTk):
             
             y_pred = model.predict(self.X_test)
             
-            # Calculate metric
             if self.current_task == 'regression':
-                # Calculate MSE
-                mse = 0.0
-                for i in range(len(y_pred)):
-                    diff = y_pred[i] - self.y_test[i]
-                    # handle possible list wrapping
-                    if isinstance(diff, list):
-                        diff = diff[0]
-                    mse += diff * diff
-                mse /= len(y_pred)
-                
-                # Print detailed results to console
-                print(f"\n{'='*60}")
-                print(f"TRAINING COMPLETE - Final Results")
-                print(f"{'='*60}")
-                print(f"Test MSE: {mse:.6f}")
-                print(f"Test Samples: {len(self.y_test)}")
-                print(f"{'='*60}\n")
-                
+                mse = np.mean((np.array(y_pred).flatten() - np.array(self.y_test).flatten())**2)
                 self.control_panel.set_status(f"Training complete! Test MSE: {mse:.4f}")
                 messagebox.showinfo("Success", f"Training completed successfully!\nTest MSE: {mse:.4f}")
             else:
-                # Calculate accuracy manually
-                correct = 0
-                for i in range(len(y_pred)):
-                    if y_pred[i] == self.y_test[i]:
-                        correct += 1
-                accuracy = (correct / len(y_pred)) * 100
-                
-                # Print detailed results to console
-                print(f"\n{'='*60}")
-                print(f"TRAINING COMPLETE - Final Results")
-                print(f"{'='*60}")
-                print(f"Test Accuracy: {accuracy:.2f}%")
-                print(f"Test Correct: {correct}/{len(y_pred)}")
-                print(f"{'='*60}\n")
-                
+                y_pred = np.array(y_pred)
+                y_test = np.array(self.y_test)
+                accuracy = np.mean(y_pred == y_test) * 100
                 self.control_panel.set_status(f"Training complete! Test Accuracy: {accuracy:.2f}%")
                 messagebox.showinfo("Success", f"Training completed successfully!\nTest Accuracy: {accuracy:.2f}%")
             
-            # For MNIST, stay on error graph (since 2D plots are not meaningful)
-            # For manual 2D data, switch to test tab to see decision boundary
             if getattr(self, 'dataset_mode', 'manual') == 'manual':
                 self.visualization_frame.switch_to_tab('test')
             else:
-                # MNIST: switch to appropriate error tab based on model
                 model_type = self.control_panel.get_model_type()
                 if model_type == 'AutoencoderMLP':
                     self.visualization_frame.switch_to_tab('mlp_loss')
@@ -612,398 +549,105 @@ class NeuralNetworkVisualizer(ctk.CTk):
         else:
             self.control_panel.set_status("Training completed!")
             messagebox.showinfo("Success", "Training completed successfully!")
+
+    def _on_save_model(self):
+        if not self.trained_model:
+            messagebox.showwarning("Warning", "No trained model to save!")
+            return
+            
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pkl",
+            filetypes=[("Pickle Files", "*.pkl"), ("All Files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                # Save the entire model object (simplest approach)
+                # Or dictionary of parameters if we want to be strict, but object is fine for now
+                with open(file_path, 'wb') as f:
+                    pickle.dump(self.trained_model, f)
+                messagebox.showinfo("Success", "Model saved successfully!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save model: {e}")
+
+    def _on_load_model(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=[("Pickle Files", "*.pkl"), ("All Files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'rb') as f:
+                    model = pickle.load(f)
+                
+                self.trained_model = model
+                self.control_panel.set_status("Model loaded.")
+                messagebox.showinfo("Success", "Model loaded successfully!")
+                
+                # If we are in handwriting mode, update the existing window if open
+                if self.handwriting_window and self.handwriting_window.winfo_exists():
+                    self.handwriting_window.model = model
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load model: {e}")
+
+    def _on_test_handwriting(self):
+        if not self.trained_model:
+            messagebox.showwarning("Warning", "Please training or load a model first!")
+            return
+            
+        if self.handwriting_window is None or not self.handwriting_window.winfo_exists():
+            self.handwriting_window = HandwritingTester(self, self.trained_model)
+            self.handwriting_window.focus()
+        else:
+            self.handwriting_window.focus()
     
+    def _on_save_encoder(self):
+        if not hasattr(self, 'trained_ae') or not self.trained_ae:
+            messagebox.showwarning("Warning", "No trained Autoencoder to save!")
+            return
+        
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pkl",
+            filetypes=[("Pickle Files", "*.pkl"), ("All Files", "*.*")],
+            initialdir=WEIGHTS_DIR,
+            title="Save Encoder"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'wb') as f:
+                    pickle.dump(self.trained_ae, f)
+                messagebox.showinfo("Success", "Encoder saved successfully!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save encoder: {e}")
+    
+    def _on_load_encoder(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=[("Pickle Files", "*.pkl"), ("All Files", "*.*")],
+            initialdir=WEIGHTS_DIR,
+            title="Load Encoder"
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'rb') as f:
+                    encoder = pickle.load(f)
+                
+                self.trained_ae = encoder
+                self.control_panel.set_status("Encoder loaded.")
+                messagebox.showinfo("Success", "Encoder loaded successfully!\nYou can now train MLP with this encoder.")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load encoder: {e}")
+
     def _update_class_radios(self):
-        """Update class selection radio buttons."""
         classes = self.data_handler.classes
         colors = [self.data_handler.get_color(i) for i in range(len(classes))]
         self.control_panel.update_class_radios(classes, colors)
-    
-    def _run_training_autoencoder(self, X_train, y_train, epochs, batch_size, stopping_criteria, min_error):
-        """Prepare and start Stage 1 (Autoencoder) training."""
-        # Get autoencoder configuration
-        encoder_dims = self.control_panel.inputs.get_encoder_architecture()
-        ae_stop_mode, ae_epochs, ae_min_error_val = self.control_panel.inputs.get_ae_stopping_config()
-        freeze_encoder = self.control_panel.inputs.get_freeze_encoder()
-        recon_samples = self.control_panel.inputs.get_recon_samples()
-        
-        # Get MLP configuration (needed later for Stage 2)
-        learning_rate = self.control_panel.inputs.get_learning_rate()
-        use_momentum, momentum_factor = self.control_panel.inputs.get_momentum_config()
-        
-        # Encoder activations (all ReLU for encoder)
-        num_encoder_layers = len(encoder_dims) - 1
-        encoder_activations = ['relu'] * (num_encoder_layers - 1) + ['relu']
-        
-        # Decoder activations (last layer sigmoid for images)
-        decoder_activations = ['relu'] * (num_encoder_layers - 1) + ['sigmoid']
-        ae_activations = encoder_activations + decoder_activations
-        
-        print(f"[AUTOENCODER] Starting training with {len(X_train)} samples, {ae_epochs} epochs")
-        self.control_panel.set_status("Stage 1/2: Training Autoencoder...")
-        
-        # Update GUI to show status before heavy operation
-        self.update()  # Changed from update_idletasks()
-        
-        # Defer initialization to allow GUI to update
-        self.after(100, lambda: self._initialize_and_start_autoencoder(
-            encoder_dims, ae_activations, learning_rate, use_momentum, momentum_factor,
-            X_train, ae_epochs, batch_size, y_train, epochs, stopping_criteria, min_error,
-            freeze_encoder, ae_stop_mode, ae_min_error_val, recon_samples
-        ))
-    
-    def _initialize_and_start_autoencoder(self, encoder_dims, ae_activations, learning_rate,
-                                          use_momentum, momentum_factor, X_train, ae_epochs,
-                                          batch_size, y_train, epochs, stopping_criteria,
-                                          min_error, freeze_encoder, ae_stop_mode,
-                                          ae_min_error_val, recon_samples):
-        """Initialize autoencoder in a deferred callback to keep GUI responsive."""
-        
-        # Stage 1: Initialize Autoencoder
-        self.control_panel.set_status("Initializing Autoencoder weights...")
-        self.update()  # Allow GUI to update - changed from update_idletasks()
-        
-        autoencoder = Autoencoder(
-            encoder_dims=encoder_dims,
-            activation_funcs=ae_activations,
-            learning_rate=learning_rate,
-            use_momentum=use_momentum,
-            momentum_factor=momentum_factor,
-        )
-        
-        print("[AUTOENCODER] Initialized successfully, creating training generator...")
-        self.control_panel.set_status("Autoencoder ready. Starting training...")
-        self.update()  # Allow GUI to update - changed from update_idletasks()
-        
-        # Create generator
-        self.ae_fit_generator = autoencoder.fit(X_train, epochs=ae_epochs, batch_size=batch_size)
-        
-        # Store context for Stage 2
-        self.stage2_context = {
-            'X_train': X_train, 'y_train': y_train,
-            'epochs': epochs, 'batch_size': batch_size,
-            'stopping_criteria': stopping_criteria, 'min_error': min_error,
-            'encoder_dims': encoder_dims, 'freeze_encoder': freeze_encoder,
-            'ae_stop_mode': ae_stop_mode, 'ae_min_error_val': ae_min_error_val,
-            'recon_samples': recon_samples,
-            'learning_rate': learning_rate, 'use_momentum': use_momentum, 'momentum_factor': momentum_factor,
-        }
-        
-        
-        # Start training in background thread
-        self.current_model = autoencoder  # Store for potential interruption
-        
-        # Clear any old results from queue
-        while not self.training_queue.empty():
-            try:
-                self.training_queue.get_nowait()
-            except queue.Empty:
-                break
-        
-        # Start worker thread
-        self.training_thread = threading.Thread(
-            target=self._autoencoder_training_worker,
-            args=(self.ae_fit_generator, ae_stop_mode, ae_min_error_val),
-            daemon=True  # Thread dies when main program exits
-        )
-        self.training_thread.start()
-        
-        # Start polling for results
-        self.after(100, self._poll_training_results)
-    
-    def _autoencoder_training_worker(self, fit_generator, ae_stop_mode, ae_min_error_val):
-        """
-        Worker thread function: Runs training loop in background.
-        Sends results to GUI thread via Queue.
-        """
-        try:
-            print("[AUTOENCODER] Worker thread started")
-            for epoch, loss, trained_ae in fit_generator:
-                if self.stop_requested:
-                    self.training_queue.put(('stopped', None, None, None))
-                    return
-                
-                if ae_stop_mode == 'error' and loss <= ae_min_error_val:
-                    self.training_queue.put(('converged', epoch, loss, trained_ae))
-                    print(f"[AUTOENCODER] Converged at epoch {epoch} with loss {loss:.6f}")
-                    return
-                
-                self.training_queue.put(('epoch', epoch, loss, trained_ae))
-            
-            self.training_queue.put(('complete', None, None, self.current_model))
-            print("[AUTOENCODER] Training completed successfully")
-            
-        except Exception as e:
-            self.training_queue.put(('error', str(e), None, None))
-    
-    def _poll_training_results(self):
-        """Poll training queue for results from worker thread (GUI thread)."""
-        try:
-            result_type, data1, data2, data3 = self.training_queue.get_nowait()
-            
-            if result_type == 'epoch':
-                epoch, loss, trained_ae = data1, data2, data3
-                self._handle_epoch_result(epoch, loss, trained_ae)
-                self.after(100, self._poll_training_results)  # Increased from 50ms
-                
-            elif result_type == 'converged':
-                epoch, loss, trained_ae = data1, data2, data3
-                self.control_panel.set_status(f"AE Converged (Loss {loss:.4f})")
-                self.visualization_frame.update_loss_plot(epoch, loss, model_type='Autoencoder')
-                self._start_stage2_mlp(trained_ae)
-                
-            elif result_type == 'complete':
-                trained_ae = data3
-                final_loss = getattr(self, 'last_ae_loss', 0.0)
-                self.control_panel.set_status(f"Stage 1 Complete! Final Loss: {final_loss:.6f}")
-                # Don't clear AE loss, just switch to MLP tab
-                self.visualization_frame.switch_to_tab('mlp_loss')
-                self.after(500, lambda: self._start_stage2_mlp(trained_ae))
-                
-            elif result_type == 'stopped':
-                self.control_panel.set_status("AE training interrupted.")
-                self._finish_training()
-                
-            elif result_type == 'error':
-                self.control_panel.set_status(f"Training error: {data1}")
-                self._finish_training()
-                
-        except queue.Empty:
-            if self.is_training and not self.stop_requested:
-                self.after(100, self._poll_training_results)  # Increased from 50ms
-    
-    def _handle_epoch_result(self, epoch, loss, trained_ae):
-        """Handle epoch result from worker thread (GUI thread)."""
-        self.current_model = trained_ae
-        self.last_ae_loss = loss
-        
-        self.control_panel.set_status(f"Stage 1/2: AE Epoch {epoch} - Recon Loss: {loss:.6f}")
-        self.visualization_frame.update_loss_plot(epoch, loss, model_type='Autoencoder')
-        self.update_idletasks()  # Lighter than update()
-        
-        ctx = self.stage2_context
-        if epoch % 10 == 0:  # Less frequent (every 10 epochs instead of 5)
-            try:
-                # Select one sample from each class (0-9) for visualization
-                num_samples = min(ctx['recon_samples'], 10)  # Max 10 classes
-                sample_indices = []
-                
-                # Try to get one from each class
-                y_train = ctx['y_train']
-                for target_class in range(num_samples):
-                    # Find first occurrence of this class
-                    for idx, label in enumerate(y_train):
-                        if label == target_class and idx not in sample_indices:
-                            sample_indices.append(idx)
-                            break
-                
-                # If we didn't get enough samples, fill with first available
-                while len(sample_indices) < num_samples and len(sample_indices) < len(ctx['X_train']):
-                    idx = len(sample_indices)
-                    if idx < len(ctx['X_train']) and idx not in sample_indices:
-                        sample_indices.append(idx)
-                
-                X_sample = [ctx['X_train'][i] for i in sample_indices]
-                X_reconstructed = trained_ae.reconstruct(X_sample)
-                
-                mse_per_sample = []
-                for i in range(len(X_sample)):
-                    diff_sq = sum((X_sample[i][j] - X_reconstructed[i][j])**2 for j in range(len(X_sample[i])))
-                    mse_per_sample.append(diff_sq / len(X_sample[i]))
-                
-                self.visualization_frame.update_reconstruction(X_sample, X_reconstructed, mse_per_sample)
-                self.update_idletasks()  # Lighter than update()
-            except Exception as e:
-                pass
-
-    def _train_autoencoder_next_epoch(self):
-        """Train one epoch of Autoencoder (Stage 1)."""
-        if self.stop_requested:
-            self.control_panel.set_status("AE training interrupted.")
-            self._finish_training()
-            return
-
-        try:
-            epoch, loss, trained_ae = next(self.ae_fit_generator)
-            self.current_model = trained_ae # Keep track of the latest trained AE
-            self.last_ae_loss = loss  # Track last loss for StopIteration case
-            
-            # Check stopping criteria (Min Error)
-            ctx = self.stage2_context
-            if ctx['ae_stop_mode'] == 'error' and loss <= ctx['ae_min_error_val']:
-                self.control_panel.set_status(f"AE Converged (Loss {loss:.4f})")
-                self.visualization_frame.update_loss_plot(epoch, loss, model_type='Autoencoder')
-                # Proceed to Stage 2 immediately
-                self._start_stage2_mlp(trained_ae)
-                return
-
-            self.control_panel.set_status(f"Stage 1/2: AE Epoch {epoch} - Recon Loss: {loss:.6f}")
-            self.visualization_frame.update_loss_plot(epoch, loss, model_type='Autoencoder')
-            
-            # Force GUI update (not just idle tasks)
-            self.update()  # Changed from update_idletasks()
-            
-            # Visualize reconstructions periodically
-            if epoch % 5 == 0 or epoch == ctx['epochs']: # Assuming ctx['epochs'] is ae_epochs
-                # Sample some images for reconstruction
-                sample_indices = list(range(min(ctx['recon_samples'], len(ctx['X_train']))))
-                X_sample = [ctx['X_train'][i] for i in sample_indices]
-                
-                # Reconstruct
-                X_reconstructed = trained_ae.reconstruct(X_sample)
-                
-                # Compute MSE per sample
-                mse_per_sample = []
-                for i in range(len(X_sample)):
-                    diff_sq = 0.0
-                    for j in range(len(X_sample[i])):
-                        diff = X_sample[i][j] - X_reconstructed[i][j]
-                        diff_sq += diff * diff
-                    mse_per_sample.append(diff_sq / len(X_sample[i]))
-                
-                # Update visualization
-                self.visualization_frame.update_reconstruction(X_sample, X_reconstructed, mse_per_sample)
-                self.update()  # Force GUI update
-            
-            # Schedule next epoch
-            self.after(20, self._train_autoencoder_next_epoch)
-            
-        except StopIteration:
-            # Stage 1 Complete (max epochs reached) -> Start Stage 2
-            final_loss = getattr(self, 'last_ae_loss', 0.0)
-            self.control_panel.set_status(f"Stage 1/2 Complete! Final Reconstruction Loss: {final_loss:.6f}. Starting Stage 2 (MLP)...")
-            # Switch to MLP error tab (don't clear AE loss)
-            self.after(500, lambda: self._start_stage2_mlp(self.current_model)) # Pass the last trained AE
-
-    def _start_stage2_mlp(self, trained_ae):
-        """Initialize and start Stage 2 (MLP training)."""
-        if self.stop_requested: # Double check
-            self._finish_training()
-            return
-            
-        self.trained_autoencoder = trained_ae # Save for reuse
-        ctx = self.stage2_context
-        
-        # Switch to MLP error tab
-        self.visualization_frame.switch_to_tab('mlp_loss')
-        print(f"[MLP] Starting classifier training (Encoder: {'Frozen' if ctx['freeze_encoder'] else 'Trainable'})")
-        self.control_panel.set_status("Stage 1 Complete. Starting Stage 2: MLP Training...")
-        
-        # Extract trained encoder weights using the correct method
-        encoder_params = trained_ae.get_encoder_weights()
-        
-        # Stage 2: Initialize MLPWithEncoder
-        # Current MLP architecture from UI
-        mlp_layer_dims = self.control_panel.inputs.get_architecture() 
-        
-        # Ensure MLP input matches Encoder output
-        encoder_output_dim = ctx['encoder_dims'][-1]
-        if mlp_layer_dims[0] != encoder_output_dim:
-            print(f"Adjusting MLP input dim from {mlp_layer_dims[0]} to {encoder_output_dim} to match encoder.")
-            mlp_layer_dims[0] = encoder_output_dim
-            
-        # Get activation functions
-        activation_funcs = self.control_panel.get_activation_functions()
-        activation_hidden = activation_funcs[0]
-        activation_output = activation_funcs[1]
-        
-        # MLPWithEncoder activations
-        mlp_activations = [activation_hidden] * (len(mlp_layer_dims) - 2) + [activation_output]
-        
-        # Encoder activations (all ReLU for encoder)
-        num_encoder_layers = len(ctx['encoder_dims']) - 1
-        encoder_activations = ['relu'] * num_encoder_layers
-        
-        # Create MLPWithEncoder model with proper parameters
-        mlp_model = MLPWithEncoder(
-            encoder_params=encoder_params,  # Add missing parameter
-            encoder_dims=ctx['encoder_dims'],
-            encoder_activations=encoder_activations,  # Add missing parameter
-            mlp_layer_dims=mlp_layer_dims,
-            mlp_activations=mlp_activations,
-            learning_rate=ctx['learning_rate'],
-            l2_lambda=self.control_panel.inputs.get_l2_lambda(),
-            freeze_encoder=ctx['freeze_encoder'],
-            use_momentum=ctx['use_momentum'],
-            momentum_factor=ctx['momentum_factor']
-        )
-        
-        # Encoder weights are already loaded in __init__, no need for set_encoder_weights
-        
-        # Create fit generator for Stage 2
-        self.fit_generator = mlp_model.fit(ctx['X_train'], ctx['y_train'], epochs=ctx['epochs'], batch_size=ctx['batch_size'])
-        
-        # Start async training loop for Stage 2
-        # Note: model_type should be passed to handle logging correctly if needed, or just 'AutoencoderMLP'
-        self._train_next_epoch(ctx['X_train'], ctx['y_train'], model_type='AutoencoderMLP')
-    
-    def _run_stage2_classifier(self, autoencoder, X_train, y_train, epochs, batch_size, 
-                                freeze_encoder, stopping_criteria, min_error):
-        """
-        Stage 2: Train MLP classifier with pre-trained encoder.
-        """
-        encoder_dims = self.control_panel.inputs.get_encoder_architecture()
-        latent_dim = encoder_dims[-1]
-        
-        # Get MLP architecture from control panel
-        mlp_architecture = self.control_panel.inputs.get_architecture()
-        mlp_architecture[0] = latent_dim  # Input is latent features
-        mlp_architecture[-1] = 10  # Output is 10 classes (MNIST)
-        
-        # Update UI to show current architecture
-        arch_str = ','.join(map(str, mlp_architecture))
-        self.control_panel.architecture_entry.delete(0, 'end')
-        self.control_panel.architecture_entry.insert(0, arch_str)
-        
-        # Get activation functions
-        activation_funcs_raw = self.control_panel.get_activation_functions()
-        hidden_activation = activation_funcs_raw[0]
-        output_activation = activation_funcs_raw[1]
-        
-        # Build MLP activation functions
-        num_mlp_layers = len(mlp_architecture) - 1
-        mlp_activations = [hidden_activation] * (num_mlp_layers - 1) + [output_activation]
-        
-        # Encoder activations
-        num_encoder_layers = len(encoder_dims) - 1
-        encoder_activations = ['relu'] * num_encoder_layers
-        
-        # Get other hyperparameters
-        learning_rate = self.control_panel.inputs.get_learning_rate()
-        l2_lambda = self.control_panel.inputs.get_l2_lambda()
-        use_momentum, momentum_factor = self.control_panel.inputs.get_momentum_config()
-        
-        # Create hybrid model
-        encoder_params = autoencoder.get_encoder_weights()
-        
-        hybrid_model = MLPWithEncoder(
-            encoder_params=encoder_params,
-            encoder_dims=encoder_dims,
-            encoder_activations=encoder_activations,
-            mlp_layer_dims=mlp_architecture,
-            mlp_activations=mlp_activations,
-            learning_rate=learning_rate,
-            l2_lambda=l2_lambda,
-            freeze_encoder=freeze_encoder,
-            use_momentum=use_momentum,
-            momentum_factor=momentum_factor,
-        )
-        
-        freeze_status = "Frozen" if freeze_encoder else "Trainable"
-        self.control_panel.set_status(f"Stage 2/2: Training MLP Classifier (Encoder: {freeze_status})...")
-        
-        # Store for training loop
-        self.current_model = hybrid_model
-        self.stopping_criteria = stopping_criteria
-        self.min_error = min_error
-        
-        # Start training classifier
-        fit_generator = hybrid_model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size)
-        self._train_next_epoch(fit_generator, X_train, y_train, 'AutoencoderMLP')
 
 
 def main():
-    """Application entry point."""
     app = NeuralNetworkVisualizer()
     app.mainloop()
 
